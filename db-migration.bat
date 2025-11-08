@@ -16,6 +16,9 @@ set "PASS="
 REM Dump options common for all databases
 REM --skip-extended-insert: one-row-per-INSERT (easier to debug, avoids huge packets)
 set "COMMON_OPTS=--single-transaction --routines --events --triggers --hex-blob --default-character-set=utf8mb4 --skip-extended-insert --add-drop-database --force"
+
+REM If you want to automatically export users/grants, set this to 1 and ensure the second .bat exists
+set "EXPORT_USERS_AND_GRANTS=0"
 REM ============================================
 
 chcp 65001 >nul
@@ -55,7 +58,7 @@ goto :selected_only
 
 REM ================== MODE 1: ALL DATABASES INTO ONE FILE ==================
 :all_in_one
-echo === Dumping ALL databases into ONE file ===
+echo === Dumping ALL databases into ONE file (including 'mysql', system db, which handle user/grants) ===
 set "OUTFILE=%OUTDIR%\all_databases.sql"
 echo Output: "%OUTFILE%"
 
@@ -68,7 +71,7 @@ if errorlevel 1 (
 ) else (
   echo     OK
 )
-goto :done
+goto :after_dumps
 
 REM ================== MODE 2: ONLY SELECTED DATABASES ==================
 :selected_only
@@ -88,7 +91,7 @@ for %%D in (%*) do (
   )
 )
 
-goto :done
+goto :after_dumps
 
 REM ================== MODE 3: ALL DATABASES SEPARATELY (DEFAULT) ==================
 :all_separate
@@ -99,12 +102,12 @@ REM Write databases to a file to avoid quoting issues with "Program Files"
 "%MDBBIN%\mariadb.exe" -h %HOST% -P %PORT% -u %USER% -p%PASS% -N -B -e "SHOW DATABASES" > "%DBLIST%"
 if errorlevel 1 (
   echo ERROR: Could not retrieve database list.
-  goto :done
+  goto :after_dumps
 )
 
 for /f "usebackq delims=" %%D in ("%DBLIST%") do (
   set "DB=%%D"
-  REM Skip system schemas except mysql (we dump mysql separately after the loop)
+  REM Skip system schemas and mysql (mysql is handled by users/grants script)
   if /I not "!DB!"=="information_schema" if /I not "!DB!"=="performance_schema" if /I not "!DB!"=="sys" if /I not "!DB!"=="mysql" (
     set "OUTFILE=%OUTDIR%\!DB!.sql"
     echo.
@@ -119,25 +122,25 @@ for /f "usebackq delims=" %%D in ("%DBLIST%") do (
   )
 )
 
+goto :after_dumps
+
+REM ================== AFTER DUMPS ==================
+:after_dumps
 echo.
-echo --- Dumping system grants/users database: mysql
-"%MDBBIN%\mariadb-dump.exe" -h %HOST% -P %PORT% -u %USER% -p%PASS% --databases mysql %COMMON_OPTS% --result-file="%OUTDIR%\mysql.sql"
-if errorlevel 1 (
-  echo [%DATE% %TIME%] ERROR dumping mysql >> "%LOG%"
-  echo     ^- See "%LOG%" for details.
-) else (
-  echo     OK
+echo === Database dumps are in: %OUTDIR%
+
+REM Optionally export users and grants via external script
+if "%EXPORT_USERS_AND_GRANTS%"=="1" (
+  echo.
+  echo === Exporting users and grants using export-users-and-grants.bat ===
+  call "%~dp0export-users-and-grants.bat"
 )
 
-goto :done
-
-REM ================== FINAL REPORT ==================
-:done
-echo.
-echo === Done. Dumps are in: %OUTDIR%
 if exist "%LOG%" (
+  echo.
   echo Some errors were recorded in: %LOG%
 ) else (
+  echo.
   echo No errors recorded.
 )
 
