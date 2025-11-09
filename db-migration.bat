@@ -133,7 +133,7 @@ REM Optionally export users and grants via external script
 if "%EXPORT_USERS_AND_GRANTS%"=="1" (
   echo.
   echo === Exporting users and grants using export-users-and-grants.bat ===
-  call "%~dp0export-users-and-grants.bat" "%MDBBIN%" "%OUTDIR%" "%HOST%" "%PORT%" "%USER%" "%PASS%"
+  @call "%~dp0export-users-and-grants.bat" "%MDBBIN%" "%OUTDIR%" "%HOST%" "%PORT%" "%USER%" "%PASS%"
 )
 
 if exist "%LOG%" (

@@ -1,7 +1,7 @@
 @echo off
-REM ============ CONFIG (keep in sync with db-migration.bat) ============
+REM ============ DEFAULT CONFIG (used if no args are passed) ============
 set "MDBBIN=C:\Program Files\MariaDB 10.5\bin"
-set "OUTDIR=D:\4\db_dumps5"
+set "OUTDIR=D:\4\db_dumps_temp"
 set "HOST=localhost"
 set "PORT=3306"
 set "USER=root"
@@ -11,18 +11,30 @@ REM =====================================================================
 chcp 65001 >nul
 setlocal EnableExtensions EnableDelayedExpansion
 
+REM --------- Override config from arguments if provided ----------
+REM Arg1: MDBBIN, Arg2: OUTDIR, Arg3: HOST, Arg4: PORT, Arg5: USER, Arg6: PASS
+
+if not "%~1"=="" set "MDBBIN=%~1"
+if not "%~2"=="" set "OUTDIR=%~2"
+if not "%~3"=="" set "HOST=%~3"
+if not "%~4"=="" set "PORT=%~4"
+if not "%~5"=="" set "USER=%~5"
+if not "%~6"=="" set "PASS=%~6"
+REM ----------------------------------------------------------------
+
 if not exist "%MDBBIN%\mariadb.exe" (
   echo ERROR: mariadb.exe not found at "%MDBBIN%".
   goto :end
 )
 
-REM Ask for password only if PASS is empty
+REM Ask for password only if PASS is empty after overrides
 if "%PASS%"=="" (
   echo Enter password for %USER%@%HOST% ^(input will be visible^)
   set /p "PASS=> "
   echo.
 )
 
+if not exist "%OUTDIR%" mkdir "%OUTDIR%"
 
 set "LOG=%OUTDIR%\_users_errors.log"
 set "USERLIST=%OUTDIR%\_userlist.txt"
