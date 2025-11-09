@@ -23,9 +23,6 @@ if "%PASS%"=="" (
   echo.
 )
 
-if not exist "%OUTDIR%" mkdir "%OUTDIR%"
-echo sho
-exit
 
 set "LOG=%OUTDIR%\_users_errors.log"
 set "USERLIST=%OUTDIR%\_userlist.txt"

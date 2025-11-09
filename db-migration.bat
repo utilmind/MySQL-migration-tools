@@ -18,7 +18,7 @@ REM --skip-extended-insert: one-row-per-INSERT (easier to debug, avoids huge pac
 set "COMMON_OPTS=--single-transaction --routines --events --triggers --hex-blob --default-character-set=utf8mb4 --skip-extended-insert --add-drop-database --force"
 
 REM If you want to automatically export users/grants, set this to 1 and ensure the second .bat exists
-set "EXPORT_USERS_AND_GRANTS=0"
+set "EXPORT_USERS_AND_GRANTS=1"
 REM ============================================
 
 chcp 65001 >nul
