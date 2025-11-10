@@ -3,9 +3,10 @@ param(
     [string]$SqlBin      = "C:\Program Files\MariaDB 10.5\bin",
     # Client executable name: mysql.exe or mariadb.exe
     [string]$SqlCli      = "mysql.exe",
-    [string]$Host        = "localhost",
-    [int]   $Port        = 3306,
-    [string]$User        = "root",
+    # DB host (don't use $Host to avoid conflict with reserved, built-in $Host)
+    [string]$DbHost      = "localhost",
+    [int]   $DbPort        = 3306,
+    [string]$DbUser      = "root",
     [string]$Password,
     [string]$OutDir      = "D:\_db-dumps",
     # Users to skip (system accounts)
@@ -21,7 +22,7 @@ if (-not (Test-Path $clientPath)) {
 
 # --- Ask password if not provided ---
 if (-not $Password) {
-    $secure = Read-Host -AsSecureString "Enter password for $User@$Host"
+    $secure = Read-Host -AsSecureString "Enter password for $DbUser@$DbHost"
     $Password = [Runtime.InteropServices.Marshal]::PtrToStringUni(
         [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
     )
@@ -47,7 +48,7 @@ function Invoke-SqlCli {
     param(
         [string]$Query
     )
-    & $clientPath -h $Host -P $Port -u $User -N -B -e $Query 2>> $logFile
+    & $clientPath -h $DbHost -P $DbPort -u $DbUser -N -B -e $Query 2>> $logFile
 }
 
 # --- 1. Get list of users@hosts (excluding system accounts) ---
@@ -80,7 +81,7 @@ foreach ($line in $rawUsers) {
 # --- 2. Write header ---
 "SET sql_log_bin=0;"            | Out-File -FilePath $outFile -Encoding UTF8
 ""                              | Out-File -FilePath $outFile -Encoding UTF8 -Append
-"-- Users and grants exported from $Host`:$Port on $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" `
+"-- Users and grants exported from $DbHost`:$DbPort on $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" `
                                 | Out-File -FilePath $outFile -Encoding UTF8 -Append
 ""                              | Out-File -FilePath $outFile -Encoding UTF8 -Append
 
