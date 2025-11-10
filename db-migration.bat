@@ -1,6 +1,6 @@
 @echo off
 REM ================== CONFIG ==================
-REM Path to MariaDB folder (old server)
+REM Path to bin folder containing mysql/mysqldump or mariadb/mariadb-dump
 set "SQLBIN=C:\Program Files\MariaDB 10.5\bin"
 REM set "SQLCLI=mariadb.exe"
 set "SQLCLI=mysql.exe"
@@ -28,7 +28,7 @@ REM ============================================
 chcp 65001 >nul
 setlocal EnableExtensions EnableDelayedExpansion
 
-REM Ensure tools exist
+REM Check executables. Ensure tools exist.
 if not exist "%SQLBIN%\%SQLCLI%" (
   echo ERROR: %SQLCLI% not found at "%SQLBIN%".
   goto :end
@@ -66,7 +66,7 @@ echo === Dumping ALL databases into ONE file (including 'mysql', system db, whic
 set "OUTFILE=%OUTDIR%\_all_databases.sql"
 echo Output: "%OUTFILE%"
 
-"%SQLBIN%\%SQLDUMP%" -h %HOST% -P %PORT% -u %USER% -p%PASS% ^
+"%SQLBIN%\%SQLDUMP%" -h "%HOST%" -P %PORT% -u "%USER%" -p%PASS% ^
   --all-databases %COMMON_OPTS% --result-file="%OUTFILE%"
 
 if errorlevel 1 (
@@ -86,7 +86,7 @@ for %%D in (%*) do (
   set "OUTFILE=%OUTDIR%\!DB!.sql"
   echo.
   echo --- Dumping database: !DB!  ^> "!OUTFILE!"
-  "%SQLBIN%\%SQLDUMP%" -h %HOST% -P %PORT% -u %USER% -p%PASS% --databases "!DB!" %COMMON_OPTS% --result-file="!OUTFILE!"
+  "%SQLBIN%\%SQLDUMP%" -h "%HOST%" -P %PORT% -u "%USER%" -p%PASS% --databases "!DB!" %COMMON_OPTS% --result-file="!OUTFILE!"
   if errorlevel 1 (
     echo [%DATE% %TIME%] ERROR dumping !DB! >> "%LOG%"
     echo     ^- See "%LOG%" for details.
@@ -103,7 +103,7 @@ echo === Getting database list from %HOST%:%PORT% ...
 set "DBLIST=%OUTDIR%\_dblist.txt"
 
 REM Write databases to a file to avoid quoting issues with "Program Files"
-"%SQLBIN%\%SQLCLI%" -h %HOST% -P %PORT% -u %USER% -p%PASS% -N -B -e "SHOW DATABASES" > "%DBLIST%"
+"%SQLBIN%\%SQLCLI%" -h "%HOST%" -P %PORT% -u "%USER%" -p%PASS% -N -B -e "SHOW DATABASES" > "%DBLIST%"
 if errorlevel 1 (
   echo ERROR: Could not retrieve database list.
   goto :after_dumps
@@ -111,12 +111,12 @@ if errorlevel 1 (
 
 for /f "usebackq delims=" %%D in ("%DBLIST%") do (
   set "DB=%%D"
-  REM Skip system schemas and mysql (mysql is handled by users/grants script)
+  REM Skip system schemas and mysql (mysql is handled via users/grants script)
   if /I not "!DB!"=="information_schema" if /I not "!DB!"=="performance_schema" if /I not "!DB!"=="sys" if /I not "!DB!"=="mysql" (
     set "OUTFILE=%OUTDIR%\!DB!.sql"
     echo.
     echo --- Dumping database: !DB!  ^> "!OUTFILE!"
-    "%SQLBIN%\%SQLDUMP%.exe" -h %HOST% -P %PORT% -u %USER% -p%PASS% --databases "!DB!" %COMMON_OPTS% --result-file="!OUTFILE!"
+    "%SQLBIN%\%SQLDUMP%" -h "%HOST%" -P %PORT% -u "%USER%" -p%PASS% --databases "!DB!" %COMMON_OPTS% --result-file="!OUTFILE!"
     if errorlevel 1 (
       echo [%DATE% %TIME%] ERROR dumping !DB! >> "%LOG%"
       echo     ^- See "%LOG%" for details.
@@ -133,7 +133,7 @@ REM ================== AFTER DUMPS ==================
 echo.
 echo === Database dumps are in: %OUTDIR%
 
-REM Optionally export users and grants via external script (BTW order of export is not important. But it's really important to IMPORT users/privileges BEFORE the data on clean MySQL server!)
+REM Optionally export users and grants via the separate script (BTW order of export is not important. But it's really important to IMPORT users/privileges BEFORE the data on clean MySQL server!)
 if "%EXPORT_USERS_AND_GRANTS%"=="1" (
   echo.
   echo === Exporting users and grants using export-users-and-grants.bat ===

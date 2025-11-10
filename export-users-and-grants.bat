@@ -14,8 +14,9 @@ set "USER=root"
 REM Password: put real password here, or leave empty to be prompted
 set "PASS="
 REM =====================================================================
-set "LOG=%OUTDIR%\^!users_errors.log"
-set "USERLIST=%OUTDIR%\^!userlist.txt"
+REM (Don't use exclamation sign in file names, to avoid !VAR! issues.)
+set "LOG=%OUTDIR%\^users_errors.log"
+set "USERLIST=%OUTDIR%\^userlist.txt"
 set "USERDUMP=%OUTDIR%\users_and_grants.sql"
 
 REM --------- Override config from arguments if provided ----------
