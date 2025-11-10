@@ -15,10 +15,11 @@ REM Password: put real password here, or leave empty to be prompted
 set "PASS="
 REM =====================================================================
 REM (Don't use exclamation sign in file names, to avoid !VAR! issues.)
+set "USERDUMP=%OUTDIR%\_users_and_grants.sql"
+REM Log and temporary files
 set "LOG=%OUTDIR%\^users_errors.log"
 set "USERLIST=%OUTDIR%\^user-list.txt"
-set "USERDUMP=%OUTDIR%\_users_and_grants.sql"
-set "TMPGRANTS=%OUTDIR%\_grants_tmp.txt"
+set "TMPGRANTS=%OUTDIR%\^grants_tmp.txt"
 
 REM --------- Override config from arguments if provided ----------
 REM Arg1: SQLBIN, Arg2: OUTDIR, Arg3: HOST, Arg4: PORT, Arg5: USER, Arg6: PASS
@@ -45,9 +46,12 @@ if "%PASS%"=="" (
 
 if not exist "%OUTDIR%" mkdir "%OUTDIR%"
 
+REM Delete previous files
 del "%LOG%" 2>nul
-del "%USERLIST%" 2>nul
 del "%USERDUMP%" 2>nul
+REM Unlikely temporary files are still there, but just in case.
+del "%USERLIST%" 2>nul
+del "%TMPGRANTS%" 2>nul
 
 
 REM After variables are set, so we can use ^! to escape !. Before export.
@@ -84,6 +88,10 @@ for /f "usebackq delims=" %%U in ("%USERLIST%") do (
 
   echo.>>"%USERDUMP%"
 )
+
+REM Delete temporary files.
+del "%USERLIST%" 2>nul
+del "%TMPGRANTS%" 2>nul
 
 echo SET sql_log_bin=1;>> "%USERDUMP%"
 echo.
