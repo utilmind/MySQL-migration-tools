@@ -53,7 +53,8 @@ del "%LOG%" 2>nul
 REM ================== MODE SELECTION ==================
 REM Usage:
 REM   db-migration.bat               -> dump all databases separately (+ mysql.sql)
-REM   db-migration.bat ALL           -> dump all databases into one file all_databases.sql (just add `all`, case insensitive)
+REM   db-migration.bat ALL           -> dump all databases into one file _all_databases.sql (just add `all`, case insensitive)
+REM                                     * EXCEPT system tables: `mysql`, `information_schema`, `performance_schema`, `sys`.
 REM   db-migration.bat db1 db2 db3   -> dump only listed databases separately
 
 if /I "%~1"=="ALL" goto :all_in_one
@@ -62,37 +63,44 @@ goto :selected_only
 
 REM ================== MODE 1: ALL DATABASES INTO ONE FILE ==================
 :all_in_one
-echo === Dumping ALL databases into ONE file (including 'mysql', system db, which handle user/grants) ===
+echo === Dumping ALL NON-SYSTEM databases into ONE file (excluding mysql, information_schema, performance_schema, sys) ===
 set "OUTFILE=%OUTDIR%\_all_databases.sql"
 echo Output: "%OUTFILE%"
 
-"%SQLBIN%\%SQLDUMP%" -h "%HOST%" -P %PORT% -u "%USER%" -p%PASS% ^
-  --all-databases %COMMON_OPTS% --result-file="%OUTFILE%"
+REM Get database list into a temp file
+set "DBLIST=%OUTDIR%\^db-list.txt"
+
+"%SQLBIN%\%SQLCLI%" -h %HOST% -P %PORT% -u %USER% -p%PASS% -N -B -e "SHOW DATABASES" > "%DBLIST%"
+if errorlevel 1 (
+  echo ERROR: Could not retrieve database list.
+  goto :after_dumps
+)
+
+REM Build a list of non-system database names
+set "DBNAMES="
+for /f "usebackq delims=" %%D in ("%DBLIST%") do (
+  set "DB=%%D"
+  if /I not "!DB!"=="information_schema" if /I not "!DB!"=="performance_schema" if /I not "!DB!"=="sys" if /I not "!DB!"=="mysql" (
+    set "DBNAMES=!DBNAMES! !DB!"
+  )
+)
+
+del "%DBLIST%" 2>nul
+
+if "!DBNAMES!"=="" (
+  echo No non-system databases found.
+  goto :after_dumps
+)
+
+echo Databases to dump: !DBNAMES!
+
+"%SQLBIN%\%SQLDUMP%" -h %HOST% -P %PORT% -u %USER% -p%PASS% --databases !DBNAMES! %COMMON_OPTS% --result-file="%OUTFILE%"
 
 if errorlevel 1 (
-  echo [%DATE% %TIME%] ERROR dumping ALL DATABASES >> "%LOG%"
+  echo [%DATE% %TIME%] ERROR dumping ALL NON-SYSTEM DATABASES >> "%LOG%"
   echo     ^- See "%LOG%" for details.
 ) else (
   echo     OK
-)
-goto :after_dumps
-
-REM ================== MODE 2: ONLY SELECTED DATABASES ==================
-:selected_only
-echo === Dumping SELECTED databases: %* ===
-
-for %%D in (%*) do (
-  set "DB=%%~D"
-  set "OUTFILE=%OUTDIR%\!DB!.sql"
-  echo.
-  echo --- Dumping database: !DB!  ^> "!OUTFILE!"
-  "%SQLBIN%\%SQLDUMP%" -h "%HOST%" -P %PORT% -u "%USER%" -p%PASS% --databases "!DB!" %COMMON_OPTS% --result-file="!OUTFILE!"
-  if errorlevel 1 (
-    echo [%DATE% %TIME%] ERROR dumping !DB! >> "%LOG%"
-    echo     ^- See "%LOG%" for details.
-  ) else (
-    echo     OK
-  )
 )
 
 goto :after_dumps

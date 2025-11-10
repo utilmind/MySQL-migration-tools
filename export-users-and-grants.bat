@@ -16,7 +16,7 @@ set "PASS="
 REM =====================================================================
 REM (Don't use exclamation sign in file names, to avoid !VAR! issues.)
 set "LOG=%OUTDIR%\^users_errors.log"
-set "USERLIST=%OUTDIR%\^userlist.txt"
+set "USERLIST=%OUTDIR%\^user-list.txt"
 set "USERDUMP=%OUTDIR%\_users_and_grants.sql"
 set "TMPGRANTS=%OUTDIR%\_grants_tmp.txt"
 
