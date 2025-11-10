@@ -17,7 +17,7 @@ REM =====================================================================
 REM (Don't use exclamation sign in file names, to avoid !VAR! issues.)
 set "LOG=%OUTDIR%\^users_errors.log"
 set "USERLIST=%OUTDIR%\^userlist.txt"
-set "USERDUMP=%OUTDIR%\users_and_grants.sql"
+set "USERDUMP=%OUTDIR%\_users_and_grants.sql"
 
 REM --------- Override config from arguments if provided ----------
 REM Arg1: SQLBIN, Arg2: OUTDIR, Arg3: HOST, Arg4: PORT, Arg5: USER, Arg6: PASS
@@ -73,8 +73,12 @@ for /f "usebackq delims=" %%U in ("%USERLIST%") do (
   echo -- User and grants for %%U>>"%USERDUMP%"
   echo CREATE USER IF NOT EXISTS %%U;>>"%USERDUMP%"
 
-  "%SQLBIN%\%SQLCLI%" -h %HOST% -P %PORT% -u %USER% -p%PASS% -N -B ^
-    -e "SHOW GRANTS FOR %%U" >> "%USERDUMP%" 2>>"%LOG%"
+  REM Append SHOW GRANTS lines, each terminated with a semicolon
+  for /f "usebackq delims=" %%G in (`
+      "%SQLBIN%\%SQLCLI%" -h "%HOST%" -P %PORT% -u "%USER%" -p%PASS% -N -B -e "SHOW GRANTS FOR %%U" 2^>>"%LOG%"
+  `) do (
+      echo %%G;>>"%USERDUMP%"
+  )
 
   echo.>>"%USERDUMP%"
 )
