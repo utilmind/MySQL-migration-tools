@@ -24,7 +24,7 @@ These `/*!xxxxx ... */` blocks are parsed and executed only on servers whose ver
 
 On modern MySQL / MariaDB installations this legacy compatibility layer is usually no longer needed. In some cases it can even cause problems: when a versioned comment wraps an entire trigger or function body, any regular `/* ... */` comment inside can accidentally interact with the outer `/*!xxxxx ... */` block and break the SQL syntax when importing into newer servers.
 
-This script removes (unwraps) old versioned compatibility comments while preserving all normal comments and trigger/function bodies. The resulting dump is easier to read, imports cleanly on newer MySQL / MariaDB versions, and keeps developer comments inside routines intact.
+The `strip-mysql-compatibility-comments.py` removes (unwraps) old versioned compatibility comments while preserving all normal comments and trigger/function bodies. The resulting dump is easier to read, imports cleanly on newer MySQL / MariaDB versions, and keeps developer comments inside routines intact (which is the most important, so you don’t need to remove comments in order to successfully import your triggers).
 
 # More compatibility notes
 * Some commands used in dump are incompatible with very old versions of MySQL. For example, `CREATE USER IF NOT EXISTS` appeared in MySQL syntax starting from v5.7.
