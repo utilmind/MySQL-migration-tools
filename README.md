@@ -8,7 +8,8 @@ This also great for quick dump and deployment an empty database structure with a
 
 # Usage
 * `db-migration.bat`                   -> dump all databases separately (+ mysql.sql)
-* `db-migration.bat --ONE`             -> dump all databases into ONE filem _databases.sql (just add `one`, case insensitive)
+* `db-migration.bat --ONE`             -> dump all databases into ONE filem _databases.sql (just add `one`, case insensitive)<br />
+&nbsp;&nbsp; &nbsp;&nbsp; <i>* EXCEPT system tables: `mysql`, `information_schema`, `performance_schema`, `sys`.</i>
 * `db-migration.bat db1 db2 db3`       -> dump only listed databases separately.
 * `db-migration.bat --ONE db1 db2 db3` -> dump only listed databases into single SQL, _databases.sql.
 
