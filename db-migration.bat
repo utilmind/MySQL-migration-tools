@@ -78,8 +78,8 @@ REM       We can remove those compatibility comments targeted for some legacy ve
 REM   0 = OFF  -> keep all dumps 'as-is', as they originally exported.
 REM   1 = ON   -> produce processed dumps clean of the compatibility comments. Python should be installed in order to process comments!
 set "REMOVE_COMPATIBILITY_COMMENTS=1"
-REM The file name appendix for dumps clean of the compatibility comments. E.g. mydata.sql -> mydata_CLEAN.sql
-set "COMPATIBILITY_COMMENTS_APPENDIX=_CLEAN"
+REM The file name appendix for dumps clean of the compatibility comments. E.g. mydata.sql -> mydata.clean.sql
+set "COMPATIBILITY_COMMENTS_APPENDIX=.clean"
 set "COMPATIBILITY_COMMENTS_REMOVER=python strip-mysql-compatibility-comments.py"
 REM ================== END CONFIG ==============
 
@@ -210,9 +210,19 @@ goto :after_dumps
 REM ================== MODE 2: ALL DATABASES INTO ONE FILE ==================
 :all_in_one
 echo === Dumping ALL NON-SYSTEM databases into ONE file (excluding mysql, information_schema, performance_schema, sys) ===
-echo Output: "%ALLDATA%"
 
-"%SQLBIN%\%SQLDUMP%" -h %HOST% -P %PORT% -u %USER% -p%PASS% --databases !DBNAMES! %COMMON_OPTS% --result-file="%ALLDATA%"
+if "%REMOVE_COMPATIBILITY_COMMENTS%"=="1" (
+  REM parse the path in ALLDATA, to get the path\filename w/o extension
+  for %%F in ("%ALLDATA%") do (
+    rem %%~dpnF = drive + path + name (no extension)
+    set "ALLDATA_CLEAN=%%~dpnF%COMPATIBILITY_COMMENTS_APPENDIX%%%~xF"
+  )
+) else (
+  set "=%ALLDATA%"
+)
+
+echo Output: "%ALLDATA%"
+rem "%SQLBIN%\%SQLDUMP%" -h %HOST% -P %PORT% -u %USER% -p%PASS% --databases !DBNAMES! %COMMON_OPTS% --result-file="%ALLDATA%"
 
 if errorlevel 1 (
   echo [%DATE% %TIME%] ERROR dumping ALL NON-SYSTEM DATABASES >> "%LOG%"
@@ -221,22 +231,18 @@ if errorlevel 1 (
   echo     OK
 
   if "%REMOVE_COMPATIBILITY_COMMENTS%"=="1" (
-    %COMPATIBILITY_COMMENTS_REMOVER% "%OUTDIR%\%ALLDATA%.sql" "%OUTDIR%\%ALLDATA%%COMPATIBILITY_COMMENTS_APPENDIX%.sql"
+    %COMPATIBILITY_COMMENTS_REMOVER% "%ALLDATA%" "%ALLDATA_CLEAN%"
   )
 
   REM Combine _users_and_grants.sql + _db_data.sql (or _db_data_CLEAN.sql) into final _db.sql
   REM (This is long process if the full dump is large. So if you don't want it, just disable %EXPORT_USERS_AND_GRANTS%, set EXPORT_USERS_AND_GRANTS=0.)
   if "%EXPORT_USERS_AND_GRANTS%"=="1" (
     if exist "%USERDUMP%" (
-      echo Combining "%USERDUMP%" and "%ALLDATA%" into "%OUTFILE%"... ^(Put users and grants before the data.^)
+      echo Combining "%USERDUMP%" and "%ALLDATA_CLEAN%" into "%OUTFILE%"... ^(Put users and grants before the data.^)
       (
         type "%USERDUMP%"
         echo.
-        if "%REMOVE_COMPATIBILITY_COMMENTS%"=="1" (
-          type "%ALLDATA%%COMPATIBILITY_COMMENTS_APPENDIX%"
-        ) else (
-          type "%ALLDATA%"
-        )
+        type "%ALLDATA_CLEAN%"
       ) > "%OUTFILE%"
       echo     OK, created "%OUTFILE%"
     )
