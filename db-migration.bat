@@ -95,7 +95,7 @@ set "DBNAMES="
 for /f "usebackq delims=" %%D in ("%DBLIST%") do (
   set "DB=%%D"
   if /I not "!DB!"=="information_schema" if /I not "!DB!"=="performance_schema" if /I not "!DB!"=="sys" if /I not "!DB!"=="mysql" (
-    set "DBNAMES=!DBNAMES! !DB!"
+    set "DBNAMES=!DBNAMES!!DB! "
   )
 )
 
@@ -121,7 +121,28 @@ if /I "%~1"=="ALL" goto :all_in_one
 if "%~1"=="" goto :all_separate
 goto :selected_only
 
-REM ================== MODE 1: ALL DATABASES INTO ONE FILE ==================
+
+REM ================== MODE 1: ALL DATABASES SEPARATELY (DEFAULT) ==================
+:all_separate
+
+for %%D in (!DBNAMES!) do (
+  set "DB=%%D"
+  set "OUTFILE=%OUTDIR%\!DB!.sql"
+  echo.
+  echo --- Dumping database: !DB!  ^> "!OUTFILE!"
+  "%SQLBIN%\%SQLDUMP%" -h "%HOST%" -P %PORT% -u "%USER%" -p%PASS% --databases "!DB!" %COMMON_OPTS% --result-file="!OUTFILE!"
+  if errorlevel 1 (
+    echo [%DATE% %TIME%] ERROR dumping !DB! >> "%LOG%"
+    echo     ^- See "%LOG%" for details.
+  ) else (
+    echo     OK
+  )
+)
+
+goto :after_dumps
+
+
+REM ================== MODE 2: ALL DATABASES INTO ONE FILE ==================
 :all_in_one
 echo === Dumping ALL NON-SYSTEM databases into ONE file (excluding mysql, information_schema, performance_schema, sys) ===
 echo Output: "%ALLDATA%"
@@ -149,15 +170,17 @@ if exist "%USERDUMP%" (
 
 goto :after_dumps
 
-REM ================== MODE 3: ALL DATABASES SEPARATELY (DEFAULT) ==================
-:all_separate
 
-for /f "usebackq delims=" %%D in ("!DBNAMES!") do (
-  set "DB=%%D"
+REM ================== MODE 3: ONLY SELECTED DATABASES ==================
+:selected_only
+echo === Dumping SELECTED databases: %* ===
+
+for %%D in (%*) do (
+  set "DB=%%~D"
   set "OUTFILE=%OUTDIR%\!DB!.sql"
   echo.
   echo --- Dumping database: !DB!  ^> "!OUTFILE!"
-  "%SQLBIN%\%SQLDUMP%" -h "%HOST%" -P %PORT% -u "%USER%" -p%PASS% --databases "!DB!" %COMMON_OPTS% --result-file="!OUTFILE!"
+  "%MDBBIN%\mariadb-dump.exe" -h %HOST% -P %PORT% -u %USER% -p%PASS% --databases "!DB!" %COMMON_OPTS% --result-file="!OUTFILE!"
   if errorlevel 1 (
     echo [%DATE% %TIME%] ERROR dumping !DB! >> "%LOG%"
     echo     ^- See "%LOG%" for details.
@@ -167,6 +190,7 @@ for /f "usebackq delims=" %%D in ("!DBNAMES!") do (
 )
 
 goto :after_dumps
+
 
 REM ================== AFTER DUMPS ==================
 :after_dumps
