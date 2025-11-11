@@ -1,4 +1,39 @@
 @echo off
+REM ======================================================================
+REM  export-users-and-grants.bat
+REM
+REM  Copyright (c) 2025 utilmind
+REM  All rights reserved.
+REM  https://github.com/utilmind/MySQL-Migration-from-Windows-PC/
+REM
+REM  Description:
+REM    Helper script for exporting MySQL / MariaDB users and privileges
+REM    into a standalone SQL file.
+REM
+REM    Features:
+REM      - Connects to the server using the configured client binary
+REM        (mysql.exe or mariadb.exe).
+REM      - Queries mysql.user (or compatible view) to obtain the list
+REM        of non-system accounts.
+REM      - Skips internal / system users (e.g. root, mariadb.sys, etc.),
+REM        depending on the configured filters.
+REM      - For each user, generates SQL statements that:
+REM          * create the user on the target server (if needed),
+REM          * re-apply all privileges using SHOW GRANTS output.
+REM      - Writes everything into users_and_grants.sql so that it can be
+REM        imported before or together with database dumps.
+REM
+REM  Usage:
+REM      Called directly:
+REM        export-users-and-grants.bat
+REM          - Uses default configuration defined in this script.
+REM
+REM      Called from db-migration.bat:
+REM        call export-users-and-grants.bat [SQLBIN] [HOST] [PORT] [USER] [PASS] [OUTDIR] [OUTFILE]
+REM          - Inherits connection and output settings from db-migration.bat.
+REM
+REM ======================================================================
+
 REM ============ DEFAULT CONFIG (used if no args are passed) ============
 REM Path to bin folder (MariaDB or MySQL)
 set "SQLBIN=C:\Program Files\MariaDB 10.5\bin"

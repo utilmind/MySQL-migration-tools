@@ -1,11 +1,37 @@
 @echo off
-REM ====== `db-migration.bat ALL` = make a full dump of all databases and users/grants ======
-REM Usage:
-REM   db-migration.bat                   -> dump all databases separately (+ mysql.sql)
-REM   db-migration.bat --ONE             -> dump all databases into one file _databases.sql (just add `--one`, case insensitive)
-REM                                          * EXCEPT system tables: `mysql`, `information_schema`, `performance_schema`, `sys`.
-REM   db-migration.bat db1 db2 db3       -> dump only listed databases separately
-REM   db-migration.bat --ONE db1 db2 db3 -> dump only listed databases into single SQL, _databases.sql.
+REM ======================================================================
+REM  db-migration.bat
+REM
+REM  Copyright (c) 2025 utilmind
+REM  All rights reserved.
+REM  https://github.com/utilmind/MySQL-Migration-from-Windows-PC/
+REM
+REM  Description:
+REM    Helper script for MySQL / MariaDB database backup and migration.
+REM
+REM    Features:
+REM      - Detects non-system databases on the server.
+REM      - Dumps all or selected databases either:
+REM          * into separate .sql files per database, or
+REM          * into a single combined dump file.
+REM      - Supports optional flags to control dump modes
+REM        (e.g. single-file vs per-database).
+REM      - Uses configurable client and dump executables
+REM        (mysql.exe / mysqldump.exe or mariadb.exe / mariadb-dump.exe).
+REM      - Integrates with export-users-and-grants.bat to include
+REM        users and privileges in the migration.
+REM
+REM  Usage (examples):
+REM      db-migration.bat
+REM        - Dump all non-system databases to separate files.
+REM
+REM      db-migration.bat --ONE
+REM        - Dump all non-system databases into a single SQL file.
+REM
+REM      db-migration.bat [options] db1 db2 ... [--one]
+REM        - Dump only selected databases. Other behavior depends on internal flags and CLI options.
+REM
+REM =================================================================================================
 
 REM ================== CONFIG ==================
 REM Path to bin folder containing mysql/mysqldump or mariadb/mariadb-dump
