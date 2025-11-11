@@ -145,8 +145,6 @@ if "%EXPORT_USERS_AND_GRANTS%"=="1" (
   if not exist "%USERDUMP%" (
     echo WARNING: "%USERDUMP%" not found, will create dump with data only, without users/grants.
   )
-) else (
-  set "ALLDATA=%OUTFILE%"
 )
 
 
