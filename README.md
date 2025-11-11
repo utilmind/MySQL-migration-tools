@@ -16,5 +16,5 @@ This also great for quick dump and deployment an empty database structure with a
 So if you need to migrate very old data, replace it to just `CREATE USER` and remove `IF NOT EXISTS`.
 * Google about more incompatibilities between MySQL and MariaDB. If there is something important, please pull your fix to this repo.
 
-# TODO
-* Maybe when I get inspired or someone pays me, I’ll make a tool that converts the syntax of MySQL triggers into SQLs compatible with Postgres, Oracle, etc.
+# ToDo
+* Maybe when I get inspired (or someone pays me), I’ll make a tool that converts the syntax of MySQL triggers into SQLs compatible with Postgres, Oracle, etc.
