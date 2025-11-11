@@ -142,6 +142,7 @@ if "!DBNAMES!"=="" (
 
 :mode_selection
 echo Databases to dump: !DBNAMES!
+echo.
 
 REM Mode selection: separate OR single SQL dump?
 if "%ONE_MODE%"=="1" goto :all_in_one
