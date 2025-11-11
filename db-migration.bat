@@ -90,6 +90,23 @@ if errorlevel 1 (
   goto :after_dumps
 )
 
+REM Build a list of non-system database names
+set "DBNAMES="
+for /f "usebackq delims=" %%D in ("%DBLIST%") do (
+  set "DB=%%D"
+  if /I not "!DB!"=="information_schema" if /I not "!DB!"=="performance_schema" if /I not "!DB!"=="sys" if /I not "!DB!"=="mysql" (
+    set "DBNAMES=!DBNAMES! !DB!"
+  )
+)
+
+del "%DBLIST%" 2>nul
+
+if "!DBNAMES!"=="" (
+  echo No non-system databases found.
+  goto :after_dumps
+)
+
+
 set "LOG=%OUTDIR%\_dump_errors.log"
 del "%LOG%" 2>nul
 
@@ -108,22 +125,6 @@ REM ================== MODE 1: ALL DATABASES INTO ONE FILE ==================
 :all_in_one
 echo === Dumping ALL NON-SYSTEM databases into ONE file (excluding mysql, information_schema, performance_schema, sys) ===
 echo Output: "%ALLDATA%"
-
-REM Build a list of non-system database names
-set "DBNAMES="
-for /f "usebackq delims=" %%D in ("%DBLIST%") do (
-  set "DB=%%D"
-  if /I not "!DB!"=="information_schema" if /I not "!DB!"=="performance_schema" if /I not "!DB!"=="sys" if /I not "!DB!"=="mysql" (
-    set "DBNAMES=!DBNAMES! !DB!"
-  )
-)
-
-rem del "%DBLIST%" 2>nul
-
-if "!DBNAMES!"=="" (
-  echo No non-system databases found.
-  goto :after_dumps
-)
 
 echo Databases to dump: !DBNAMES!
 "%SQLBIN%\%SQLDUMP%" -h %HOST% -P %PORT% -u %USER% -p%PASS% --databases !DBNAMES! %COMMON_OPTS% --result-file="%ALLDATA%"
@@ -151,20 +152,17 @@ goto :after_dumps
 REM ================== MODE 3: ALL DATABASES SEPARATELY (DEFAULT) ==================
 :all_separate
 
-for /f "usebackq delims=" %%D in ("%DBLIST%") do (
+for /f "usebackq delims=" %%D in ("!DBNAMES!") do (
   set "DB=%%D"
-  REM Skip system schemas and mysql (mysql is handled via users/grants script)
-  if /I not "!DB!"=="information_schema" if /I not "!DB!"=="performance_schema" if /I not "!DB!"=="sys" if /I not "!DB!"=="mysql" (
-    set "OUTFILE=%OUTDIR%\!DB!.sql"
-    echo.
-    echo --- Dumping database: !DB!  ^> "!OUTFILE!"
-    "%SQLBIN%\%SQLDUMP%" -h "%HOST%" -P %PORT% -u "%USER%" -p%PASS% --databases "!DB!" %COMMON_OPTS% --result-file="!OUTFILE!"
-    if errorlevel 1 (
-      echo [%DATE% %TIME%] ERROR dumping !DB! >> "%LOG%"
-      echo     ^- See "%LOG%" for details.
-    ) else (
-      echo     OK
-    )
+  set "OUTFILE=%OUTDIR%\!DB!.sql"
+  echo.
+  echo --- Dumping database: !DB!  ^> "!OUTFILE!"
+  "%SQLBIN%\%SQLDUMP%" -h "%HOST%" -P %PORT% -u "%USER%" -p%PASS% --databases "!DB!" %COMMON_OPTS% --result-file="!OUTFILE!"
+  if errorlevel 1 (
+    echo [%DATE% %TIME%] ERROR dumping !DB! >> "%LOG%"
+    echo     ^- See "%LOG%" for details.
+  ) else (
+    echo     OK
   )
 )
 
