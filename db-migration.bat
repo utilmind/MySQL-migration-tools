@@ -24,11 +24,13 @@ REM Dump options common for all databases
 REM --skip-extended-insert: one-row-per-INSERT (easier to debug, avoids huge packets)
 set "COMMON_OPTS=--single-transaction --routines --events --triggers --hex-blob --default-character-set=utf8mb4 --skip-extended-insert --add-drop-database --force"
 
-REM If you want to automatically export users/grants, set this to 1 and ensure the second .bat exists. Included in the beginning of FULL dump, if 
+REM If you want to automatically export users/grants, set this to 1 and ensure the second .bat exists. Included in the beginning of FULL dump.
 set "EXPORT_USERS_AND_GRANTS=1"
 REM ============================================
 REM Filename used if we dump ALL databases
 set "OUTFILE=%OUTDIR%\_all_databases.sql"
+set "ALLDATA=%OUTDIR%\_all_databases_data.sql"
+set "USERDUMP=%OUTDIR%\_users_and_grants.sql"
 REM Temporary file for the list of databases
 set "DBLIST=%OUTDIR%\^db-list.txt"
 
@@ -59,9 +61,13 @@ if not exist "%OUTDIR%" mkdir "%OUTDIR%"
 REM Optionally export users and grants via the separate script.
 REM Important to prepare it in the beginning, to include to the _all_databases export.
 if "%EXPORT_USERS_AND_GRANTS%"=="1" (
-  echo.
-  echo === Exporting users and grants using export-users-and-grants.bat ===
-  @call "%~dp0export-users-and-grants.bat" "%SQLBIN%" "%OUTDIR%" "%HOST%" "%PORT%" "%USER%" "%PASS%"
+  REM === Exporting users and grants using export-users-and-grants.bat ===
+  @call "%~dp0export-users-and-grants.bat" "%SQLBIN%" "%HOST%" "%PORT%" "%USER%" "%PASS%" "%OUTDIR%" "%USERDUMP%"
+  if not exist "%USERDUMP%" (
+    echo WARNING: "%USERDUMP%" not found, will create dump with data only, without users/grants.
+  )
+) else (
+  set "ALLDATA=%OUTFILE%"
 )
 
 
@@ -91,7 +97,7 @@ goto :selected_only
 REM ================== MODE 1: ALL DATABASES INTO ONE FILE ==================
 :all_in_one
 echo === Dumping ALL NON-SYSTEM databases into ONE file (excluding mysql, information_schema, performance_schema, sys) ===
-echo Output: "%OUTFILE%"
+echo Output: "%ALLDATA%"
 
 REM Build a list of non-system database names
 set "DBNAMES="
@@ -110,14 +116,24 @@ if "!DBNAMES!"=="" (
 )
 
 echo Databases to dump: !DBNAMES!
-
-"%SQLBIN%\%SQLDUMP%" -h %HOST% -P %PORT% -u %USER% -p%PASS% --databases !DBNAMES! %COMMON_OPTS% --result-file="%OUTFILE%"
+"%SQLBIN%\%SQLDUMP%" -h %HOST% -P %PORT% -u %USER% -p%PASS% --databases !DBNAMES! %COMMON_OPTS% --result-file="%ALLDATA%"
 
 if errorlevel 1 (
   echo [%DATE% %TIME%] ERROR dumping ALL NON-SYSTEM DATABASES >> "%LOG%"
   echo     ^- See "%LOG%" for details.
 ) else (
   echo     OK
+)
+
+REM Combine _users_and_grants.sql + _all_databases_data.sql into _all_databases.sql
+if exist "%USERDUMP%" (
+  echo Merging "%USERDUMP%" and "%ALLDATA%" into "%OUTFILE%"...
+  (
+    type "%USERDUMP%"
+    echo.
+    type "%ALLDATA%"
+  ) > "%OUTFILE%"
+  echo     OK, created "%OUTFILE%"
 )
 
 goto :after_dumps

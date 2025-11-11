@@ -22,14 +22,15 @@ set "USERLIST=%OUTDIR%\^user-list.txt"
 set "TMPGRANTS=%OUTDIR%\^grants_tmp.txt"
 
 REM --------- Override config from arguments if provided ----------
-REM Arg1: SQLBIN, Arg2: OUTDIR, Arg3: HOST, Arg4: PORT, Arg5: USER, Arg6: PASS
+REM Arg1: SQLBIN, Arg2: HOST, Arg3: PORT, Arg4: USER, Arg5: PASS, Arg6: OUTDIR, Arg7: USERDUMP
 
 if not "%~1"=="" set "SQLBIN=%~1"
-if not "%~2"=="" set "OUTDIR=%~2"
-if not "%~3"=="" set "HOST=%~3"
-if not "%~4"=="" set "PORT=%~4"
-if not "%~5"=="" set "USER=%~5"
-if not "%~6"=="" set "PASS=%~6"
+if not "%~2"=="" set "HOST=%~2"
+if not "%~3"=="" set "PORT=%~3"
+if not "%~4"=="" set "USER=%~4"
+if not "%~5"=="" set "PASS=%~5"
+if not "%~6"=="" set "OUTDIR=%~6"
+if not "%~7"=="" set "USERDUMP=%~7"
 REM ----------------------------------------------------------------
 
 if not exist "%SQLBIN%\%SQLCLI%" (
@@ -94,7 +95,6 @@ del "%USERLIST%" 2>nul
 del "%TMPGRANTS%" 2>nul
 
 echo SET sql_log_bin=1;>> "%USERDUMP%"
-echo.
 echo === Users and grants saved to: "%USERDUMP%"
 
 REM If log file exists but is empty (0 bytes), delete it
