@@ -17,4 +17,4 @@ So if you need to migrate very old data, replace it to just `CREATE USER` and re
 * Google about more incompatibilities between MySQL and MariaDB. If there is something important, please pull your fix to this repo.
 
 # ToDo
-* Maybe when I get inspired (or someone pays me), I’ll make a tool that converts the syntax of MySQL triggers into SQLs compatible with Postgres, Oracle, etc.
+* Maybe when I get inspired (or someone pays me), I’ll make a tool that converts the MySQL syntax into SQLs compatible with Postgres, Oracle, etc. A simple tool for migrations between MySQL/MariaDB and PostgresSQL. I’m actually sure that something for migration between MySQL to PostgresSQL are already available, but still interested to build my own tool one day.
