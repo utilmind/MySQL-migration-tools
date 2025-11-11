@@ -42,4 +42,4 @@ So if you need to migrate very old data, replace it to just `CREATE USER` and re
 # ToDo
 * When we dump selected databases, let's dump users/grants only for *selected* databases.
 * Maybe when I get inspired (or someone pays me :), I’ll make a tool that converts the MySQL syntax into SQLs compatible with Postgres, Oracle, etc. A simple tool for migrations between MySQL/MariaDB and PostgresSQL. I’m actually sure that something for migration between MySQL to PostgresSQL are already available, but still interested to build my own tool one day.
-* Maybe I’ll convert these .bat`s to bash scripts for migration from Linux servers, but I’ll put them into different repository. This one is exclusively for Windows.
+* Maybe I’ll convert these .bat’s to bash scripts for migration from Linux servers, but I’ll put them into different repository. This one is exclusively for Windows.
