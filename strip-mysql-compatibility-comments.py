@@ -31,8 +31,7 @@ DEFAULT CHARSET and COLLATE according to the original server
 metadata extracted from information_schema.TABLES.
 
 Usage:
-    python strip-mysql-compatibility-comments.py input.sql output.sql
-    python strip-mysql-compatibility-comments.py input.sql output.sql tables-meta.tsv
+    python strip-mysql-compatibility-comments.py input.sql output.sql [tables-meta.tsv]
 """
 
 import os
@@ -452,8 +451,7 @@ def main() -> None:
     if len(sys.argv) not in (3, 4):
         print(
             "Usage:\n"
-            "  python strip-mysql-compatibility-comments.py input.sql output.sql\n"
-            "  python strip-mysql-compatibility-comments.py input.sql output.sql tables-meta.tsv",
+            "  python strip-mysql-compatibility-comments.py input.sql output.sql [tables-meta.tsv]",
             file=sys.stderr,
         )
         sys.exit(1)
