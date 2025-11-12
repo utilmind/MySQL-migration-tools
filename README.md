@@ -2,11 +2,11 @@
 
 Windows batch (`.bat`) scripts for creating SQL dumps of single or multiple databases — either into separate `.sql` files or one combined all-in-one dump (including all users and their grants).
 
-The goal is to create a dump that can be easily imported into any MySQL or MariaDB server, preserving **stored procedures, functions, triggers, views, and user accounts (definers) with their privileges**.
+The goal is to create a dump that can be easily imported into any MySQL or MariaDB server, preserving **stored procedures, functions, triggers, views, user accounts (definers) with their privileges and the data in the original (not default!) encoding and collation**.
 
-You can create the dump on a Windows machine and import it into any other MySQL or MariaDB server — not necessarily running on Windows.
+You can create the dump on a Windows machine but import it into any MySQL/MariaDB server, not necessarily running on Windows.
 
-This tool is also perfect for quickly deploying an empty database structure with all initial triggers and definers intact.
+This tool is also perfect for quickly deploying an empty database structure with all initial triggers and definers (users).
 
 ---
 
