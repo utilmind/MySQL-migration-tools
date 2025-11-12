@@ -2,7 +2,7 @@
 
 REM ================== CONFIG ==================
 REM Log file name
-set "LOGFILE=_errors.log"
+set "LOGFILE=_errors-import.log"
 REM ============== END OF CONFIG ==================
 REM Use UTF-8 encoding for output, if needed
 chcp 65001 >nul

@@ -90,6 +90,7 @@ set "OUTFILE=%OUTDIR%\_db.sql"
 set "ALLDATA=%OUTDIR%\_db_data.sql"
 set "USERDUMP=%OUTDIR%\_users_and_grants.sql"
 set "TABLE_SCHEMAS=%OUTDIR%\_tables-meta.tsv"
+set "LOG=%OUTDIR%\_errors-dump.log"
 REM Temporary file for the list of databases
 set "DBLIST=%OUTDIR%\^db-list.txt"
 set "DBNAMES="
@@ -152,8 +153,7 @@ if "%EXPORT_USERS_AND_GRANTS%"=="1" (
   )
 )
 
-
-set "LOG=%OUTDIR%\_dump_errors.log"
+REM Remove previous log. (To Recycle Bin.)
 del "%LOG%" 2>nul
 
 REM If we already have the list of databases to dump, then don't retrieve names from server
