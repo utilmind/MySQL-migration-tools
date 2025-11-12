@@ -253,7 +253,7 @@ if errorlevel 1 (
   echo     OK
 
   if "%REMOVE_COMPATIBILITY_COMMENTS%"=="1" (
-    %COMPATIBILITY_COMMENTS_REMOVER% "%ALLDATA%" "%ALLDATA_CLEAN%"
+    %COMPATIBILITY_COMMENTS_REMOVER% "%ALLDATA%" "%ALLDATA_CLEAN%" "%TABLE_SCHEMAS%"
   )
 
   REM Combine _users_and_grants.sql + _db_data.sql (or _db_data_CLEAN.sql) into final _db.sql

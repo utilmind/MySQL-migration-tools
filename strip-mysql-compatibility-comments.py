@@ -21,13 +21,20 @@ The script never loads the whole file into memory.
 It reads line by line and only keeps one versioned comment block
 in memory at a time.
 
+Optionally, if a table metadata TSV is provided, it will also
+normalize CREATE TABLE statements to include ENGINE, ROW_FORMAT,
+DEFAULT CHARSET and COLLATE according to the original server
+metadata extracted from information_schema.TABLES.
+
 Usage:
     python strip-mysql-compatibility-comments.py input.sql output.sql
+    python strip-mysql-compatibility-comments.py input.sql output.sql tables-meta.tsv
 """
 
 import os
+import re
 import sys
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict, Any
 
 
 def find_conditional_end(comment: str) -> Tuple[Optional[int], Optional[int]]:
@@ -100,10 +107,217 @@ def report_progress(processed_bytes: int, total_size: int, last: float) -> float
     return last
 
 
+# --- NEW: table metadata loading and CREATE TABLE enhancement -----------------
+
+
+def load_table_metadata(tsv_path: str) -> Tuple[Dict[str, Dict[str, Any]], Optional[str]]:
+    """
+    Load table metadata from TSV file produced by a query like:
+
+        SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, ROW_FORMAT, TABLE_COLLATION
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA IN (...);
+
+    Returns:
+        (meta, default_schema)
+
+        meta: dict with keys "schema.table" and values:
+              {
+                  "engine": str,
+                  "row_format": Optional[str],
+                  "table_collation": str
+              }
+
+        default_schema: if all rows share the same TABLE_SCHEMA,
+                        this schema name is returned, otherwise None.
+    """
+    meta: Dict[str, Dict[str, Any]] = {}
+    schemas = set()
+
+    if not os.path.isfile(tsv_path):
+        sys.stderr.write(f"\n[WARN] Table metadata TSV not found: {tsv_path}. "
+                         f"CREATE TABLE enhancement will be skipped.\n")
+        return meta, None
+
+    sys.stderr.write(f"\nLoading table metadata from '{tsv_path}'...\n")
+
+    with open(tsv_path, "r", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            line = line.rstrip("\n\r")
+            if not line:
+                continue
+            parts = line.split("\t")
+            if len(parts) < 5:
+                continue
+
+            schema, table, engine, row_format, table_collation = parts[:5]
+
+            schemas.add(schema)
+            key = f"{schema}.{table}"
+
+            rf = row_format.strip()
+            if not rf or rf.upper() == "NULL":
+                rf = None
+            else:
+                rf = rf.upper()
+
+            meta[key] = {
+                "engine": engine,
+                "row_format": rf,
+                "table_collation": table_collation,
+            }
+
+    default_schema = None
+    if len(schemas) == 1:
+        default_schema = next(iter(schemas))
+
+    sys.stderr.write(f"Loaded metadata for {len(meta)} tables"
+                     f"{' in schema ' + default_schema if default_schema else ''}.\n")
+    return meta, default_schema
+
+
+# Precompiled regexes for CREATE TABLE / USE detection
+USE_DB_RE = re.compile(r'^\s*USE\s+`([^`]+)`;', re.IGNORECASE)
+CREATE_TABLE_RE = re.compile(
+    r'^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`([^`]+)`', re.IGNORECASE
+)
+ENGINE_LINE_RE = re.compile(r'\)\s+ENGINE\s*=', re.IGNORECASE)
+
+
+def enhance_create_table(
+    text: str,
+    state: Dict[str, Any],
+    table_meta: Dict[str, Dict[str, Any]],
+    default_schema: Optional[str],
+) -> str:
+    """
+    Enhance CREATE TABLE statements in the given text chunk using table_meta.
+
+    The function tracks:
+      - current_schema (via USE `db`;)
+      - multi-line CREATE TABLE blocks
+      - final line starting with ') ENGINE=...'
+
+    When a full CREATE TABLE is buffered, it rewrites the last line
+    to include ENGINE, ROW_FORMAT, DEFAULT CHARSET and COLLATE based
+    on information_schema.TABLES metadata.
+
+    If table_meta is empty, the text is returned unchanged.
+    """
+    if not table_meta:
+        return text
+
+    out_lines = []
+
+    # State fields:
+    #  state["current_schema"]: current database (from USE)
+    #  state["in_create"]: bool
+    #  state["current_table"]: str or None
+    #  state["buffer"]: str (accumulated CREATE TABLE block)
+    current_schema = state.get("current_schema") or default_schema
+    in_create = state.get("in_create", False)
+    current_table = state.get("current_table")
+    buffer = state.get("buffer", "")
+
+    # Process line by line to keep semantics simple
+    for line in text.splitlines(keepends=True):
+        # Track USE `db`;
+        m_use = USE_DB_RE.match(line)
+        if m_use:
+            current_schema = m_use.group(1)
+
+        if not in_create:
+            m_create = CREATE_TABLE_RE.match(line)
+            if m_create:
+                # Start of CREATE TABLE
+                in_create = True
+                current_table = m_create.group(1)
+                buffer = line
+                continue  # do not emit line yet
+            else:
+                out_lines.append(line)
+                continue
+        else:
+            # Already inside CREATE TABLE block
+            buffer += line
+            if ENGINE_LINE_RE.search(line):
+                # This is the last line of CREATE TABLE (ENGINE=...)
+                schema_to_use = current_schema or default_schema
+
+                full = buffer
+                if schema_to_use:
+                    key = f"{schema_to_use}.{current_table}"
+                else:
+                    # No schema info: try all schemas for this table name
+                    matches = [k for k in table_meta.keys()
+                               if k.endswith(f".{current_table}")]
+                    key = matches[0] if len(matches) == 1 else None
+
+                info = table_meta.get(key) if key else None
+
+                if info:
+                    engine = info["engine"]
+                    row_format = info["row_format"]
+                    table_collation = info["table_collation"]
+
+                    # Derive charset from collation: e.g. utf8mb4_general_ci -> utf8mb4
+                    charset = table_collation.split("_", 1)[0]
+
+                    # Rebuild the last line of CREATE TABLE
+                    lines = full.splitlines(keepends=True)
+                    last_line = lines[-1]
+
+                    # Preserve indentation before ')'
+                    close_idx = last_line.find(")")
+                    if close_idx == -1:
+                        indent = ""
+                        newline = "\n"
+                    else:
+                        indent = last_line[:close_idx]
+                        # Detect newline style
+                        if last_line.endswith("\r\n"):
+                            newline = "\r\n"
+                        elif last_line.endswith("\n"):
+                            newline = "\n"
+                        else:
+                            newline = ""
+
+                    parts = [f"{indent}) ENGINE={engine}"]
+                    if row_format:
+                        parts.append(f" ROW_FORMAT={row_format}")
+                    parts.append(f" DEFAULT CHARSET={charset} COLLATE={table_collation};")
+                    new_last_line = "".join(parts) + newline
+
+                    lines[-1] = new_last_line
+                    full = "".join(lines)
+
+                # Emit the full CREATE TABLE (modified or original)
+                out_lines.append(full)
+
+                # Reset CREATE TABLE state
+                in_create = False
+                current_table = None
+                buffer = ""
+            # else: still inside CREATE, keep accumulating
+
+    # Update state
+    state["current_schema"] = current_schema
+    state["in_create"] = in_create
+    state["current_table"] = current_table
+    state["buffer"] = buffer
+
+    return "".join(out_lines)
+
+
+# --- Main stream processing ---------------------------------------------------
+
+
 def process_dump_stream(
     in_path: str,
     out_path: str,
     version_threshold: int = 80000,
+    table_meta: Optional[Dict[str, Dict[str, Any]]] = None,
+    default_schema: Optional[str] = None,
 ) -> None:
     """
     Stream-process input dump:
@@ -113,14 +327,36 @@ def process_dump_stream(
       (across multiple lines, with nested '/* ... */' support)
     - if version < threshold: unwrap (emit only inner content)
     - else: keep the whole comment as-is
+    - optionally enhance CREATE TABLE statements using table_meta
     - write everything to out_path
     - print progress to stderr
     """
+    if table_meta is None:
+        table_meta = {}
+
     total_size = os.path.getsize(in_path)
     processed_bytes = 0
     last_percent_reported = -1.0
 
-    sys.stderr.write(f"Removing MySQL compatibility comments from '{in_path}' ({total_size:,} bytes) and saving clean dump to '{out_path}'...\n"),
+    sys.stderr.write(
+        f"Removing MySQL compatibility comments from '{in_path}' "
+        f"({total_size:,} bytes) and saving clean dump to '{out_path}'...\n"
+    )
+
+    # State for CREATE TABLE enhancement
+    create_state: Dict[str, Any] = {
+        "current_schema": default_schema,
+        "in_create": False,
+        "current_table": None,
+        "buffer": "",
+    }
+
+    def write_out(chunk: str) -> None:
+        """Write chunk to fout, optionally enhancing CREATE TABLE."""
+        if not chunk:
+            return
+        enhanced = enhance_create_table(chunk, create_state, table_meta, default_schema)
+        fout.write(enhanced)
 
     with open(in_path, "r", encoding="utf-8", errors="replace") as fin, \
          open(out_path, "w", encoding="utf-8", errors="replace") as fout:
@@ -139,7 +375,7 @@ def process_dump_stream(
                 idx = line.find("/*!", pos)
                 if idx == -1:
                     # No more versioned comments in this line/tail
-                    fout.write(line[pos:])
+                    write_out(line[pos:])
                     break
 
                 # Check that we actually have digits after /*! (versioned comment)
@@ -148,7 +384,7 @@ def process_dump_stream(
                     j += 1
                 if j == idx + 3:
                     # Not a "/*!<digits>" pattern; treat as normal text up to "/*!"
-                    fout.write(line[pos:idx + 3])
+                    write_out(line[pos:idx + 3])
                     pos = idx + 3
                     continue
 
@@ -165,8 +401,8 @@ def process_dump_stream(
                     next_line = fin.readline()
                     if not next_line:
                         # EOF inside comment - just output what we have and exit
-                        fout.write(line[pos:idx])
-                        fout.write(comment)
+                        write_out(line[pos:idx])
+                        write_out(comment)
                         # ensure final progress
                         last_percent_reported = report_progress(total_size, total_size, last_percent_reported)
                         sys.stderr.write(" done.\n")
@@ -188,15 +424,15 @@ def process_dump_stream(
                 tail = comment[end_pos + 2:]          # what follows after '*/' (could be ';;' etc.)
 
                 # Write everything before the comment from the original 'line'
-                fout.write(line[pos:idx])
+                write_out(line[pos:idx])
 
                 # Decide whether to unwrap or keep the comment
                 if version < version_threshold:
                     # Unwrap: emit only the inner content
-                    fout.write(inner)
+                    write_out(inner)
                 else:
                     # Keep the whole comment block as-is
-                    fout.write(comment[:end_pos + 2])
+                    write_out(comment[:end_pos + 2])
 
                 # Now we continue processing the tail of the comment
                 line = tail
@@ -209,21 +445,36 @@ def process_dump_stream(
 
 
 def main() -> None:
-    if len(sys.argv) != 3:
+    if len(sys.argv) not in (3, 4):
         print(
-            "Usage: python strip-mysql-compatibility-comments.py input.sql output.sql",
+            "Usage:\n"
+            "  python strip-mysql-compatibility-comments.py input.sql output.sql\n"
+            "  python strip-mysql-compatibility-comments.py input.sql output.sql tables-meta.tsv",
             file=sys.stderr,
         )
         sys.exit(1)
 
     in_path = sys.argv[1]
     out_path = sys.argv[2]
+    tsv_path = sys.argv[3] if len(sys.argv) == 4 else None
 
     if not os.path.isfile(in_path):
         print(f"Input file not found: {in_path}", file=sys.stderr)
         sys.exit(1)
 
-    process_dump_stream(in_path, out_path, version_threshold=80000)
+    table_meta: Dict[str, Dict[str, Any]] = {}
+    default_schema: Optional[str] = None
+
+    if tsv_path is not None:
+        table_meta, default_schema = load_table_metadata(tsv_path)
+
+    process_dump_stream(
+        in_path,
+        out_path,
+        version_threshold=80000,
+        table_meta=table_meta,
+        default_schema=default_schema,
+    )
 
 
 if __name__ == "__main__":
