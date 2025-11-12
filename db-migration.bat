@@ -87,6 +87,7 @@ REM Filename used if we dump ALL databases
 set "OUTFILE=%OUTDIR%\_db.sql"
 set "ALLDATA=%OUTDIR%\_db_data.sql"
 set "USERDUMP=%OUTDIR%\_users_and_grants.sql"
+set "TABLE_SCHEMAS=_tables-meta.tsv"
 REM Temporary file for the list of databases
 set "DBLIST=%OUTDIR%\^db-list.txt"
 set "DBNAMES="
@@ -181,6 +182,27 @@ if "!DBNAMES!"=="" (
 :mode_selection
 echo Databases to dump: !DBNAMES!
 echo.
+
+REM Build comma-separated, quoted database list for SQL IN (...)
+set "DBNAMES_IN="
+
+for %%D in (!DBNAMES!) do (
+  if defined DBNAMES_IN (
+    set "DBNAMES_IN=!DBNAMES_IN!, '%%D'"
+  ) else (
+    set "DBNAMES_IN='%%D'"
+  )
+)
+
+REM === Dump default table schemas, to be able to restore everything exactly as on original server ===
+echo Dumping table metadata to '%TABLE_SCHEMAS%' ...
+"%SQLBIN%\%SQLCLI%" -h "%HOST%" -P %PORT% -u "%USER%" -p%PASS% -N -B -e "SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, ROW_FORMAT, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA IN (!DBNAMES_IN!) ORDER BY TABLE_SCHEMA, TABLE_NAME;" > "%TABLE_SCHEMAS%"
+if errorlevel 1 (
+    echo Failed to dump table metadata.
+) else (
+    echo Done. Metadata saved to '%TABLE_SCHEMAS%'.
+)
+exit
 
 REM Mode selection: separate OR single SQL dump?
 if "%ONE_MODE%"=="1" goto :all_in_one
