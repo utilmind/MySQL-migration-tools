@@ -94,6 +94,7 @@ REM Temporary file for the list of databases
 set "DBLIST=%OUTDIR%\^db-list.txt"
 set "DBNAMES="
 
+REM Use UTF-8 encoding for output, if needed
 chcp 65001 >nul
 setlocal EnableExtensions EnableDelayedExpansion
 

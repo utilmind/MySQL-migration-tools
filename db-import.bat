@@ -1,4 +1,13 @@
 @echo off
+
+REM ================== CONFIG ==================
+REM Log file name
+set "LOGFILE=_errors.log"
+REM ============== END OF CONFIG ==================
+REM Use UTF-8 encoding for output, if needed
+chcp 65001 >nul
+
+
 REM Check if first argument is provided
 if "%~1"=="" (
     echo Error: no path to the MySQL dump provided.
@@ -15,21 +24,49 @@ if not exist "%FILE%" (
     exit /b 1
 )
 
+
+REM Remove old log if exists. (To Recycle Bin.)
+if exist "%LOGFILE%" del "%LOGFILE%"
+
 echo Importing "%FILE%" into MySQL...
 
 REM Run MySQL client:
 REM   -u root -p        -> ask for password
 REM   --verbose         -> show what is being executed (some progress)
-REM   --force           -> continue import even in case of error. You can review all errors together in the log.
+REM   --force           -> continue import even if SQL errors occur. You can review all errors together in the log.
 REM   < "%FILE%"        -> read SQL commands from dump file
-REM   2> "_errors.log"  -> send ONLY errors (stderr) to _errors.log
-mysql -u root -p --verbose --force < "%FILE%" 2> "_errors.log"
+REM   2> "%LOGFILE%"    -> send ONLY errors (stderr) to _errors.log
+mysql -u root -p --verbose < "%FILE%" 2> "%LOGFILE%"
 
-REM Check exit code. (This doesn't works if --force option is used for import, se we'll check "_errors.log" additionally. The next line is good w/o --force, don't remove it.)
-if errorlevel 1 (
-    echo Import FAILED. See "_errors.log" for details.
-    exit /b 1
-) else (
-    echo Import completed successfully.
-    exit /b 0
+REM Save MySQL process exit code (connection / fatal errors)
+set "MYSQL_ERRORLEVEL=%ERRORLEVEL%"
+
+REM Check if log file has any content
+set "HAS_ERRORS=0"
+if exist "%LOGFILE%" (
+    for %%A in ("%LOGFILE%") do (
+        if not "%%~zA"=="0" set "HAS_ERRORS=1"
+    )
 )
+
+REM If there are errors in log file
+if "%HAS_ERRORS%"=="1" goto :hasErrors
+
+REM If MySQL itself failed (e.g. auth, connection, etc.) but log is empty
+if not "%MYSQL_ERRORLEVEL%"=="0" (
+    echo Import FAILED ^(mysql returned errorlevel %MYSQL_ERRORLEVEL%^), but no SQL errors were logged.
+    exit /b %MYSQL_ERRORLEVEL%
+)
+
+REM No log errors and MySQL exited normally
+echo Import completed successfully. No errors detected.
+exit /b 0
+
+
+:hasErrors
+REM Count number of lines in log file
+for /f %%C in ('type "%LOGFILE%" ^| find /v /c ""') do set ERRLINES=%%C
+echo Import completed with ERRORS.
+echo %ERRLINES% line(s) in "%LOGFILE%".
+echo Please review the log file for details.
+exit /b 1
