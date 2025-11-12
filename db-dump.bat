@@ -101,21 +101,21 @@ setlocal EnableExtensions EnableDelayedExpansion
 
 REM Add trailing slash (\) to the end of %SQLBIN%, if it's not empty.
 if defined SQLBIN (
-    if not "%SQLBIN:~-1%"=="\" (
-        set "SQLBIN=%SQLBIN%\"
-    )
-)
+  if not "%SQLBIN:~-1%"=="\" (
+    set "SQLBIN=%SQLBIN%\"
+  )
 
-REM Check executables. Ensure tools exist.
-if not exist "%SQLBIN%%SQLCLI%" (
-  echo ERROR: %SQLCLI% not found at "%SQLBIN%".
-  echo Please open the '%~nx0', and edit the configuration, particularly the path in SQLBIN variable.
-  goto :end
-)
-if not exist "%SQLBIN%%SQLDUMP%" (
-  echo ERROR: %SQLDUMP% not found at "%SQLBIN%".
-  echo Please open the '%~nx0', and edit the configuration, particularly the SQLDUMP variable.
-  goto :end
+  REM Check executables. Ensure tools exist.
+  if not exist "%SQLBIN%%SQLCLI%" (
+    echo ERROR: %SQLCLI% not found at "%SQLBIN%".
+    echo Please open the '%~nx0', and edit the configuration, particularly the path in SQLBIN variable.
+    goto :end
+  )
+  if not exist "%SQLBIN%%SQLDUMP%" (
+    echo ERROR: %SQLDUMP% not found at "%SQLBIN%".
+    echo Please open the '%~nx0', and edit the configuration, particularly the SQLDUMP variable.
+    goto :end
+  )
 )
 
 REM Ask for password only if PASS is empty

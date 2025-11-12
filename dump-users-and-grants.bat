@@ -70,15 +70,15 @@ REM ----------------------------------------------------------------
 
 REM Add trailing slash (\) to the end of %SQLBIN%, if it's not empty.
 if defined SQLBIN (
-    if not "%SQLBIN:~-1%"=="\" (
-        set "SQLBIN=%SQLBIN%\"
-    )
-)
+  if not "%SQLBIN:~-1%"=="\" (
+    set "SQLBIN=%SQLBIN%\"
+  )
 
-if not exist "%SQLBIN%%SQLCLI%" (
-  echo ERROR: %SQLCLI% not found at "%SQLBIN%".
-  echo Please open the '%~nx0', and edit the configuration, particularly the path in SQLBIN variable.
-  goto :end
+  if not exist "%SQLBIN%%SQLCLI%" (
+    echo ERROR: %SQLCLI% not found at "%SQLBIN%".
+    echo Please open the '%~nx0', and edit the configuration, particularly the path in SQLBIN variable.
+    goto :end
+  )
 )
 
 REM Ask for password only if PASS is empty after overrides
