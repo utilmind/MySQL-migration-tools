@@ -74,7 +74,7 @@ The result: a clean, readable, and portable dump that imports without issues on 
    Example:  
    A field defined as `UNIQUE` may reject an insert if the new server’s collation treats certain characters as equivalent.  
    For instance, in `utf8mb4_general_ci`, Ukrainian letters **г** and **ґ** are distinct, but in `utf8mb4_uca1400_ai_ci` they are treated as equal.  
-   So inserting “ґрати” (“gate”) after “грати” (“to play”) would trigger a duplicate-key error.  
+   So inserting differnt words like Ukrainian “ґрати” (“gate”) after “грати” (“to play”) would trigger a duplicate-key error.  
    This script prevents such issues by ensuring each `CREATE TABLE` statement fully specifies its original charset, collation, and options.
 
 4. *(Just a tip)* — Errors during import may flash by unnoticed in the terminal.  
@@ -88,6 +88,6 @@ The result: a clean, readable, and portable dump that imports without issues on 
 ## 🧰 To-Do
 
 * When dumping selected databases, include only the relevant users/grants.  
-* (Maybe someday 😄) Create a converter that translates MySQL syntax into SQL compatible with Postgres, Oracle, etc.  
+* Maybe when I get inspired (or someone pays me :) Create a converter that translates MySQL syntax into SQL compatible with Postgres, Oracle, etc.  
 * Possibly port these `.bat` scripts to Bash for Linux environments (in a separate repository).  
   The [`strip-mysql-compatibility-comments.py`](strip-mysql-compatibility-comments.py) script, however, is cross-platform and works everywhere.
