@@ -4,6 +4,10 @@
 """
 strip-mysql-compatibility-comments.py
 
+Copyright (c) 2025 utilmind
+All rights reserved.
+https://github.com/utilmind/MySQL-Migration-from-Windows-PC/
+
 Stream-process a large MySQL/MariaDB dump and remove versioned
 compatibility comments of the form:
 
