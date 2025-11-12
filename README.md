@@ -10,7 +10,8 @@ This also great for quick dump and deployment an empty database structure with a
   ✔ Transfers all users and their grants/privileges (excluding system users, like *root*, *mariadb.sys* etc).<br />
   ✔ Doesn't touch system data tables like *mysql*, *sys*, *information_schema*, *performance_schema*.<br />
   ✔ Can dump data from separate databases into separate files or  produce all-in-one-dump.sql (with `--one` option).<br />
-  ✔ Can strip MySQL compatibility comments, which break developers comments `/* ... */` inside of the db triggers. (So all dev's comments in code preserved for import into another db server.) * *this is the most important feature for the author :)*
+  ✔ Can strip MySQL compatibility comments, which break developers comments `/* ... */` inside of the db triggers. (So all dev's comments in code preserved for import into another db server.)<br />
+  ✔ Supplements the dump with `CREATE TABLE` instructions that guarantee replication of the tables in their exactly original form, with original charset collations, ensuring that during import all data will be in the unchanged encoding, in the original row format and all other original table options. Particularly this solves problems with importing rows into fields with unique values, which, with a certain collation of the target server are considered as duplicates.
 
 # Usage
 Before using it __please open `db-migration.bat` with text/code editor__ and set up the path to MySQL/MariaDB executables (and maybe some other options, see the CONFIG part inside).
