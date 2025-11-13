@@ -52,7 +52,7 @@ def find_conditional_end(comment: str) -> Tuple[Optional[int], Optional[int]]:
     Returns:
         (end_pos, digits_end)
 
-        end_pos   - index where the closing "*/" starts (or None if not found)
+        end_pos    - index where the closing "*/" starts (or None if not found)
         digits_end - index right after the version digits (i.e. start of inner content)
     """
     n = len(comment)
@@ -110,7 +110,7 @@ def report_progress(processed_bytes: int, total_size: int, last: float) -> float
     return last
 
 
-# --- NEW: table metadata loading and CREATE TABLE enhancement -----------------
+# --- Table metadata loading and CREATE TABLE enhancement ----------------------
 
 
 def load_table_metadata(tsv_path: str) -> Tuple[Dict[str, Dict[str, Any]], Optional[str]]:
@@ -126,9 +126,9 @@ def load_table_metadata(tsv_path: str) -> Tuple[Dict[str, Dict[str, Any]], Optio
 
         meta: dict with keys "schema.table" and values:
               {
-                  "engine": str,
+                  "engine": Optional[str],
                   "row_format": Optional[str],
-                  "table_collation": str
+                  "table_collation": Optional[str]
               }
 
         default_schema: if all rows share the same TABLE_SCHEMA,
@@ -138,8 +138,10 @@ def load_table_metadata(tsv_path: str) -> Tuple[Dict[str, Dict[str, Any]], Optio
     schemas = set()
 
     if not os.path.isfile(tsv_path):
-        sys.stderr.write(f"\n[WARN] Table metadata TSV not found: {tsv_path}. "
-                         f"CREATE TABLE enhancement will be skipped.\n")
+        sys.stderr.write(
+            f"\n[WARN] Table metadata TSV not found: {tsv_path}. "
+            f"CREATE TABLE enhancement will be skipped.\n"
+        )
         return meta, None
 
     sys.stderr.write(f"\nLoading table metadata from '{tsv_path}'...\n")
@@ -158,24 +160,37 @@ def load_table_metadata(tsv_path: str) -> Tuple[Dict[str, Dict[str, Any]], Optio
             schemas.add(schema)
             key = f"{schema}.{table}"
 
-            rf = row_format.strip()
+            # Normalize engine
+            eng = (engine or "").strip()
+            if not eng or eng.upper() == "NULL":
+                eng = None
+
+            # Normalize row_format
+            rf = (row_format or "").strip()
             if not rf or rf.upper() == "NULL":
                 rf = None
             else:
                 rf = rf.upper()
 
+            # Normalize collation
+            tc = (table_collation or "").strip()
+            if not tc or tc.upper() == "NULL":
+                tc = None
+
             meta[key] = {
-                "engine": engine,
+                "engine": eng,
                 "row_format": rf,
-                "table_collation": table_collation,
+                "table_collation": tc,
             }
 
     default_schema = None
     if len(schemas) == 1:
         default_schema = next(iter(schemas))
 
-    sys.stderr.write(f"Loaded metadata for {len(meta)} tables"
-                     f"{' in schema ' + default_schema if default_schema else ''}.\n")
+    sys.stderr.write(
+        f"Loaded metadata for {len(meta)} tables"
+        f"{(' in schema ' + default_schema) if default_schema else ''}.\n"
+    )
     return meta, default_schema
 
 
@@ -185,6 +200,12 @@ CREATE_TABLE_RE = re.compile(
     r'^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`([^`]+)`', re.IGNORECASE
 )
 ENGINE_LINE_RE = re.compile(r'\)\s+ENGINE\s*=', re.IGNORECASE)
+
+# Detect "DROP VIEW IF EXISTS `name`;"
+DROP_VIEW_RE = re.compile(
+    r'^\s*DROP\s+VIEW\s+IF\s+EXISTS\s+`([^`]+)`;',
+    re.IGNORECASE
+)
 
 
 def enhance_create_table(
@@ -196,16 +217,12 @@ def enhance_create_table(
     """
     Enhance CREATE TABLE statements in the given text chunk using table_meta.
 
-    The function tracks:
-      - current_schema (via USE `db`;)
-      - multi-line CREATE TABLE blocks
-      - final line starting with ') ENGINE=...'
+    Skips enhancement for temporary CREATE TABLE emitted before a VIEW:
+      DROP VIEW IF EXISTS `v`;
+      CREATE TABLE `v` (...);   -- do not touch it
 
-    When a full CREATE TABLE is buffered, it rewrites the last line
-    to include ENGINE, ROW_FORMAT, DEFAULT CHARSET and COLLATE based
-    on information_schema.TABLES metadata.
-
-    If table_meta is empty, the text is returned unchanged.
+    Only *adds* missing tokens; never removes existing ones
+    (AUTO_INCREMENT, COMMENT, STATS_*, etc. are preserved).
     """
     if not table_meta:
         return text
@@ -213,101 +230,167 @@ def enhance_create_table(
     out_lines = []
 
     # State fields:
-    #  state["current_schema"]: current database (from USE)
-    #  state["in_create"]: bool
-    #  state["current_table"]: str or None
-    #  state["buffer"]: str (accumulated CREATE TABLE block)
     current_schema = state.get("current_schema") or default_schema
     in_create = state.get("in_create", False)
     current_table = state.get("current_table")
     buffer = state.get("buffer", "")
 
-    # Process line by line to keep semantics simple
+    # Remember that next CREATE TABLE for this name is a VIEW-shadow
+    skip_for_table = state.get("skip_for_table")
+    if skip_for_table is None:
+        skip_for_table = set()
+
+    def append_chunk(s: str) -> None:
+        out_lines.append(s)
+
     for line in text.splitlines(keepends=True):
         # Track USE `db`;
         m_use = USE_DB_RE.match(line)
         if m_use:
             current_schema = m_use.group(1)
 
+        # Track "DROP VIEW IF EXISTS `x`;"
+        m_dv = DROP_VIEW_RE.match(line)
+        if m_dv:
+            skip_for_table.add(m_dv.group(1))
+            append_chunk(line)
+            continue
+
         if not in_create:
             m_create = CREATE_TABLE_RE.match(line)
             if m_create:
-                # Start of CREATE TABLE
                 in_create = True
                 current_table = m_create.group(1)
                 buffer = line
-                continue  # do not emit line yet
+                continue
             else:
-                out_lines.append(line)
+                append_chunk(line)
                 continue
         else:
-            # Already inside CREATE TABLE block
             buffer += line
             if ENGINE_LINE_RE.search(line):
-                # This is the last line of CREATE TABLE (ENGINE=...)
-                schema_to_use = current_schema or default_schema
-
+                # Got last line of CREATE TABLE
                 full = buffer
+
+                # If this CREATE TABLE is the temporary one used for a VIEW — skip enhancement once
+                if current_table in skip_for_table:
+                    append_chunk(full)
+                    skip_for_table.discard(current_table)
+                    in_create = False
+                    current_table = None
+                    buffer = ""
+                    continue
+
+                # Resolve metadata key (schema.table)
+                schema_to_use = current_schema or default_schema
                 if schema_to_use:
                     key = f"{schema_to_use}.{current_table}"
                 else:
-                    # No schema info: try all schemas for this table name
-                    matches = [k for k in table_meta.keys()
-                               if k.endswith(f".{current_table}")]
+                    # No schema info: try by table name uniqueness
+                    matches = [
+                        k for k in table_meta.keys()
+                        if k.endswith(f".{current_table}")
+                    ]
                     key = matches[0] if len(matches) == 1 else None
 
                 info = table_meta.get(key) if key else None
 
                 if info:
                     engine = info["engine"]
-                    row_format = info["row_format"]
-                    table_collation = info["table_collation"]
+                    row_format = info["row_format"]      # None or UPPER
+                    table_collation = info["table_collation"]  # may be None
 
-                    # Derive charset from collation: e.g. utf8mb4_general_ci -> utf8mb4
-                    charset = table_collation.split("_", 1)[0]
-
-                    # Rebuild the last line of CREATE TABLE
-                    lines = full.splitlines(keepends=True)
-                    last_line = lines[-1]
-
-                    # Preserve indentation before ')'
-                    close_idx = last_line.find(")")
-                    if close_idx == -1:
-                        indent = ""
-                        newline = "\n"
+                    # If metadata looks broken — do not inject NULLs; warn and pass through
+                    if not engine or not table_collation:
+                        sys.stderr.write(
+                            f"\n[WARN] Missing metadata for "
+                            f"{key or current_table}: ENGINE={engine!r}, "
+                            f"COLLATION={table_collation!r}. "
+                            f"CREATE TABLE kept as-is.\n"
+                        )
+                        append_chunk(full)
                     else:
-                        indent = last_line[:close_idx]
-                        # Detect newline style
-                        if last_line.endswith("\r\n"):
-                            newline = "\r\n"
-                        elif last_line.endswith("\n"):
-                            newline = "\n"
+                        # Derive charset from collation: e.g. utf8mb4_general_ci -> utf8mb4
+                        charset = table_collation.split("_", 1)[0]
+
+                        # --- augment last line tokens instead of replacing the whole line ---
+                        lines = full.splitlines(keepends=True)
+                        last_line = lines[-1]
+
+                        close_idx = last_line.find(")")
+                        if close_idx == -1:
+                            # Degenerate case: just emit as-is
+                            append_chunk(full)
                         else:
-                            newline = ""
+                            prefix = last_line[:close_idx]   # indentation + ')'
+                            rest = last_line[close_idx + 1:]  # tokens part
 
-                    parts = [f"{indent}) ENGINE={engine}"]
-                    if row_format:
-                        parts.append(f" ROW_FORMAT={row_format}")
-                    parts.append(f" DEFAULT CHARSET={charset} COLLATE={table_collation};")
-                    new_last_line = "".join(parts) + newline
+                            # Parse existing tokens
+                            has_engine = re.search(r'\bENGINE\s*=', rest, re.I) is not None
+                            has_rowfmt = re.search(r'\bROW_FORMAT\s*=', rest, re.I) is not None
+                            has_def_charset = re.search(
+                                r'\bDEFAULT\s+CHARSET\s*=', rest, re.I
+                            ) is not None
+                            has_collate = re.search(
+                                r'\bCOLLATE\s*=', rest, re.I
+                            ) is not None
 
-                    lines[-1] = new_last_line
-                    full = "".join(lines)
+                            additions = []
 
-                # Emit the full CREATE TABLE (modified or original)
-                out_lines.append(full)
+                            if not has_engine:
+                                additions.append(f" ENGINE={engine}")
+                            if row_format and not has_rowfmt:
+                                additions.append(f" ROW_FORMAT={row_format}")
+                            if not has_def_charset:
+                                additions.append(f" DEFAULT CHARSET={charset}")
+                                if not has_collate:
+                                    additions.append(f" COLLATE={table_collation}")
+                            else:
+                                # DEFAULT CHARSET present; add COLLATE if missing
+                                if not has_collate:
+                                    additions.append(f" COLLATE={table_collation}")
 
-                # Reset CREATE TABLE state
+                            # Detect newline at the end
+                            nl = ""
+                            if rest.endswith("\r\n"):
+                                nl = "\r\n"
+                                rest_core = rest[:-2]
+                            elif rest.endswith("\n"):
+                                nl = "\n"
+                                rest_core = rest[:-1]
+                            else:
+                                rest_core = rest
+
+                            # If rest_core already ends with ';', insert additions before it
+                            if rest_core.rstrip().endswith(";"):
+                                semi_pos = rest_core.rfind(";")
+                                new_rest_core = (
+                                    rest_core[:semi_pos]
+                                    + "".join(additions)
+                                    + rest_core[semi_pos:]
+                                )
+                            else:
+                                new_rest_core = rest_core + "".join(additions)
+
+                            new_last_line = f"{prefix}){new_rest_core}{nl}"
+                            lines[-1] = new_last_line
+                            full = "".join(lines)
+                            append_chunk(full)
+                else:
+                    # No metadata — keep as-is
+                    append_chunk(full)
+
+                # reset CREATE state
                 in_create = False
                 current_table = None
                 buffer = ""
-            # else: still inside CREATE, keep accumulating
 
     # Update state
     state["current_schema"] = current_schema
     state["in_create"] = in_create
     state["current_table"] = current_table
     state["buffer"] = buffer
+    state["skip_for_table"] = skip_for_table
 
     return "".join(out_lines)
 
@@ -352,6 +435,7 @@ def process_dump_stream(
         "in_create": False,
         "current_table": None,
         "buffer": "",
+        "skip_for_table": set(),
     }
 
     def write_out(chunk: str) -> None:
@@ -370,7 +454,11 @@ def process_dump_stream(
                 break  # EOF
 
             processed_bytes += len(line.encode("utf-8", errors="replace"))
-            last_percent_reported = report_progress(processed_bytes, total_size, last_percent_reported)
+            last_percent_reported = report_progress(
+                processed_bytes,
+                total_size,
+                last_percent_reported,
+            )
 
             # We may modify 'line' as we consume versioned comments
             pos = 0
@@ -407,13 +495,21 @@ def process_dump_stream(
                         write_out(line[pos:idx])
                         write_out(comment)
                         # ensure final progress
-                        last_percent_reported = report_progress(total_size, total_size, last_percent_reported)
+                        last_percent_reported = report_progress(
+                            total_size,
+                            total_size,
+                            last_percent_reported,
+                        )
                         sys.stderr.write(" done.\n")
                         sys.stderr.flush()
                         return
 
                     processed_bytes += len(next_line.encode("utf-8", errors="replace"))
-                    last_percent_reported = report_progress(processed_bytes, total_size, last_percent_reported)
+                    last_percent_reported = report_progress(
+                        processed_bytes,
+                        total_size,
+                        last_percent_reported,
+                    )
                     comment += next_line
 
                 # At this point we have a full '/*!<digits> ... */' in 'comment'
