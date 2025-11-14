@@ -1,6 +1,6 @@
 @echo off
 REM ======================================================================
-REM  db-migration.bat
+REM  db-dump.bat
 REM
 REM  Copyright (c) 2025 utilmind
 REM  All rights reserved.
@@ -22,13 +22,13 @@ REM      - Integrates with dump-users-and-grants.bat to include
 REM        users and privileges in the migration.
 REM
 REM  Usage (examples):
-REM      db-migration.bat
+REM      db-dump.bat
 REM        - Dump all non-system databases to separate files.
 REM
-REM      db-migration.bat --ONE
+REM      db-dump.bat --ONE
 REM        - Dump all non-system databases into a single SQL file.
 REM
-REM      db-migration.bat [options] db1 db2 ... [--one]
+REM      db-dump.bat [options] db1 db2 ... [--one]
 REM        - Dump only selected databases. Other behavior depends on internal flags and CLI options.
 REM
 REM =================================================================================================

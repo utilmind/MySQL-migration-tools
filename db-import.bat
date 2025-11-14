@@ -1,4 +1,20 @@
 @echo off
+REM ======================================================================
+REM  db-import.bat
+REM
+REM  Copyright (c) 2025 utilmind
+REM  All rights reserved.
+REM  https://github.com/utilmind/MySQL-Migration-from-Windows-PC/
+REM
+REM  Description:
+REM    Helper script to import MySQL / MariaDB database dump,
+REM    displaying the progress in console and logging all errors.
+REM
+REM  Usage:
+REM      db-import.bat source-dump.sql
+REM
+REM ======================================================================
+
 
 REM ================== CONFIG ==================
 REM Log file name

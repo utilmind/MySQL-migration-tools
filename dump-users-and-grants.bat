@@ -1,6 +1,6 @@
 @echo off
 REM ======================================================================
-REM  export-users-and-grants.bat
+REM  dump-users-and-grants.bat
 REM
 REM  Copyright (c) 2025 utilmind
 REM  All rights reserved.
@@ -25,12 +25,12 @@ REM        imported before or together with database dumps.
 REM
 REM  Usage:
 REM      Called directly:
-REM        export-users-and-grants.bat
+REM        dump-users-and-grants.bat
 REM          - Uses default configuration defined in this script.
 REM
-REM      Called from db-migration.bat:
-REM        call export-users-and-grants.bat [SQLBIN] [HOST] [PORT] [USER] [PASS] [OUTDIR] [OUTFILE]
-REM          - Inherits connection and output settings from db-migration.bat.
+REM      Called from db-dump.bat:
+REM        call dump-users-and-grants.bat [SQLBIN] [HOST] [PORT] [USER] [PASS] [OUTDIR] [OUTFILE]
+REM          - Inherits connection and output settings from db-dump.bat.
 REM
 REM ======================================================================
 
