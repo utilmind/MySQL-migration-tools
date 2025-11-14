@@ -58,6 +58,8 @@ if not "%MYSQL_ERRORLEVEL%"=="0" (
     exit /b %MYSQL_ERRORLEVEL%
 )
 
+REM No need to keep empty log file
+if exist "%LOGFILE%" del "%LOGFILE%"
 REM No log errors and MySQL exited normally
 echo Import completed successfully. No errors detected.
 exit /b 0
