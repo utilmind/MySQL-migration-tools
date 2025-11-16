@@ -21,6 +21,8 @@ This tool is also perfect for quickly deploying an empty database structure with
 
 ## ⚙️ Usage
 
+### 🪟 Windows
+
 Before using, **open `db-dump.bat` in a text/code editor** and review the configuration (in CONFIG section inside).
 
 * `db-dump.bat` — dumps all databases separately (+ `mysql.sql`)
@@ -30,6 +32,20 @@ Before using, **open `db-dump.bat` in a text/code editor** and review the config
 * `db-dump.bat --ONE db1 db2 db3` — dumps only the listed databases into a single `_databases.sql`.
 
 💡 You can also dump remote hosts, specifying the hostname/IP and in the `%HOST%`/`%PORT%` variables.
+
+### 🐧 Linux
+
+**Open `bash/db-dump.sh` in a text/code editor** and review the configuration (in CONFIG section inside).<br />
+Then copy content of `bash` directory to your server instance.
+
+* `db-dump.sh /path/dump-name.sql configuration-name` — dumps all databases into a single SQL file using connection settings from the configuration file named `.configuration-name.credentials.sh` in the same directory where `db-dump.sh` is located. If configuration-name not specified, all settings will be taken from `.credentials.sh`.
+* `db-dump.sh /path/dump-name.sql` — dumps all databases into a single SQL file. Configuration (connection settings, and credentials, username/password) will be taken from `.credentials.sh` located in the same directory with `db-dump.sh`.
+* `db-dump.sh --help` — displays help.
+
+⚠️ MySQL (not MariaDB) can display a warning like
+mysqldump: [Warning] Using a password on the command line interface can be insecure.
+Yes, it's definitely is, but ignore this warning. This is simply the password entered or specified in the configuration,
+which is substituted when calling mysqldump as a command-line parameter.
 
 ---
 
@@ -91,5 +107,3 @@ The result: a clean, readable, and portable dump that imports without issues on 
 
 * When dumping selected databases, include only the relevant users/grants.
 * Maybe when I get inspired (or someone pays me :) Create a converter that translates MySQL syntax into SQL compatible with Postgres, Oracle, etc.
-* Possibly port these `.bat` scripts to Bash for Linux environments (in a separate repository).
-  The [`strip-mysql-compatibility-comments.py`](strip-mysql-compatibility-comments.py) script, however, is cross-platform and works everywhere.
