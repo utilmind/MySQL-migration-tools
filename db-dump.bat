@@ -108,10 +108,12 @@ set "COMMON_OPTS=%COMMON_OPTS% --no-tablespaces"
 REM Do NOT inject SET @@GLOBAL.GTID_PURGED into the dump (safer for imports into existing replicas).
 set "COMMON_OPTS=%COMMON_OPTS% --set-gtid-purged=OFF"
 
-REM ===== Optional, uncomment as needed =====
+REM If dumping from MySQL 8.x to older MySQL/MariaDB where COLUMN_STATISTICS is absent, OR...
+REM If you're dumping MariaDB server using mysqldump executable from MySQL, suppress the column stats.
+REM (Because MariaDB doesn't have the column statistics and this option is enabled by default in MySQL 8+.)
+set "COMMON_OPTS=%COMMON_OPTS% --column-statistics=0"
 
-REM If dumping from MySQL 8.x to older MySQL/MariaDB where COLUMN_STATISTICS is absent, enable:
-REM set "COMMON_OPTS=%COMMON_OPTS% --column-statistics=0"
+REM ===== Optional, uncomment as needed =====
 
 REM Preserve server local time zone behavior (usually NOT recommended). By default, mysqldump sets UTC.
 REM Only use if your target server lacks time zone tables or you have a strong reason to avoid UTC.
