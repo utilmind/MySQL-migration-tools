@@ -31,6 +31,8 @@ This tool is also perfect for quickly deploying an empty database structure with
 * `db-dump.bat db1 db2 db3` — dumps only the listed databases (separately).
 * `db-dump.bat --ONE db1 db2 db3` — dumps only the listed databases into a single `_databases.sql`.
 
+💡 You can also dump remote hosts, specifying the hostname/IP and in the `%HOST%`/`%PORT%` variables.
+
 ### 🐧 Linux
 
 **Open `bash/db-dump.sh` in a text/code editor** and review the configuration (in CONFIGURATION section in the top of the script).<br />
@@ -41,10 +43,8 @@ Then copy content of `bash` directory to your server instance.
 * `db-dump.sh /path/dump-name.sql` — dumps all into a single SQL file. Configuration (connection settings, and credentials, username/password) will be taken from `.credentials.sh` located in the same directory with `db-dump.sh`.
 * `db-dump.sh --help` — displays help.
 
-💡 You can also dump remote hosts, specifying the hostname/IP and in the `%HOST%`/`%PORT%` variables.
 ⚠️ Please always make sure that device has enough space for dumps.<br />
-⚠️ MySQL (not MariaDB) can display a warning like
-mysqldump: [Warning] Using a password on the command line interface can be insecure.
+⚠️ MySQL (not MariaDB) can display a warning like `mysqldump: [Warning] Using a password on the command line interface can be insecure.`
 Yes, it's definitely is, but ignore this warning. This is simply the password entered or specified in the configuration,
 which is substituted when calling mysqldump as a command-line parameter.
 
