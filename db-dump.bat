@@ -72,7 +72,7 @@ set "REMOVE_COMPATIBILITY_COMMENTS=1"
 REM The file name appendix for dumps clean of the compatibility comments. E.g. mydata.sql -> mydata.clean.sql
 set "COMPATIBILITY_COMMENTS_APPENDIX=.clean"
 REM Replace 'python' to 'python3' or 'py', depending under which name the Python interpreter is registered in your system.
-set "COMPATIBILITY_COMMENTS_REMOVER=python strip-mysql-compatibility-comments.py"
+set "COMPATIBILITY_COMMENTS_REMOVER=python ./bash/strip-mysql-compatibility-comments.py"
 
 REM Dump options common for all databases
 REM NOTE: These options affect every dump produced by this script.
