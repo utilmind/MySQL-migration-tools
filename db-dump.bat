@@ -4,7 +4,7 @@ REM  db-dump.bat
 REM
 REM  Copyright (c) 2025 utilmind
 REM  All rights reserved.
-REM  https://github.com/utilmind/MySQL-Migration-from-Windows-PC/
+REM  https://github.com/utilmind/MySQL-migration-tools
 REM
 REM  Description:
 REM    Helper script for MySQL / MariaDB database backup and migration.
