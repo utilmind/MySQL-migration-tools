@@ -186,19 +186,9 @@ Arguments:
         # dbPassword can be omitted; in this case the script will ask for it interactively.
 
         # Optional: you can override default table prefixes for this DB:
-        # dbTablePrefix=('table_prefix_' 'table_prefix2_')
+        # dbTablePrefix=('table_prefix1_' 'table_prefix2_' 'bot_' 'email_' 'user_')
 
-(c) utilmind@gmail.com, 2012-2025
-    15.10.2024: Each dump has date, don't overwrite past days backups.
-    26.08.2025: Multiple table prefixes.
-    15.11.2025: Request password if not specified in configuration;
-                Process dump to remove MySQL compatibility comments
-                + provide missing details (server defaults) to the 'CREATE TABLE' statements
-                  (to solve issues with collations on import).
-                (These features require Python3+ installed.)
-                + provide missing details (server defaults) to the 'CREATE TABLE' statements.
-    16.11.2025: Explicit table list as third parameter; table optimization moved to optimize-tables.sh;
-                --skip-optimize flag added.
+(c) utilmind, 2012-2025
 
 EOF
 }
