@@ -71,21 +71,34 @@ REM               * Python should be installed if this feature is used!
 set "REMOVE_COMPATIBILITY_COMMENTS=1"
 REM The file name appendix for dumps clean of the compatibility comments. E.g. mydata.sql -> mydata.clean.sql
 set "COMPATIBILITY_COMMENTS_APPENDIX=.clean"
+REM Replace 'python' to 'python3' or 'py', depending under which name the Python interpreter is registered in your system.
 set "COMPATIBILITY_COMMENTS_REMOVER=python strip-mysql-compatibility-comments.py"
 
 REM Dump options common for all databases
 REM --force = continue dump even in case of errors. Dump will be prepared even if some databases/tables are crashed. (W/o crashed tables)
 set "COMMON_OPTS=--single-transaction --routines --events --triggers"
-set "COMMON_OPTS=%COMMON_OPTS% --hex-blob"
+
+REM Continue dump even in case of some error. You can read all errors combined in the log. (Usually '_errors-dump.log' in the dump folder.)
+set "COMMON_OPTS=%COMMON_OPTS% --force"
+
+REM Use this charset as default for dumps. This however doesn't affects the collations.
+REM So use REMOVE_COMPATIBILITY_COMMENTS=1 to add correct collation option to the `CREATE TABLE` statement.
 set "COMMON_OPTS=%COMMON_OPTS% --default-character-set=utf8mb4"
+
+REM Add all standard non-default options to the `CREATE TABLE` statements. This adds options even if you skip the post-processing of dump with REMOVE_COMPATIBILITY_COMMENTS=0.
 set "COMMON_OPTS=%COMMON_OPTS% --create-options"
+
+REM Represent binary blobs as hexadecimal strings. So dumps with blobs will take more disk space, but easier to open and read with text editor.
+REM Comment out the next line if you'd prefer having smaller dumps.
+set "COMMON_OPTS=%COMMON_OPTS% --hex-blob"
 
 REM Don't add into dump statements like `SET @@GLOBAL.GTID_PURGED=...`. GTID (Global Transaction ID) is used for replication mechanism.
 REM So the dump is easier to import into server that already have own GTID history or GTID not used.
 set "COMMON_OPTS=%COMMON_OPTS% --set-gtid-purged=OFF"
 
-REM Continue dump even in case of some error. You can read all errors combined in the log. (Usually '_errors-dump.log' in the dump folder.)
-set "COMMON_OPTS=%COMMON_OPTS% --force"
+REM Don't include information about tablespace. (For easier import to MariaDB or other MySQL forks, or to cloud MySQL (RDS, Aurora etc),
+REM where tablespace management is restricted or different. Or for easier import to server where table structure doen't use the same tablespace.
+set "COMMON_OPTS=%COMMON_OPTS% --no-tablespaces"
 
 REM Drop database before import, to recreate it from scratch.
 REM Good only for total recreation of database from the FULL dump. Not suitable if you make partial import of some specific tables.
@@ -97,6 +110,9 @@ REM set "COMMON_OPTS=%COMMON_OPTS% --column-statistics=0"
 
 REM Uncomment the next line to dump/import one-row-per-INSERT (easier to debug, avoids huge packets). Otherwise (default) make multiple INSERT's in single block.
 REM set "COMMON_OPTS=%COMMON_OPTS% --skip-extended-insert"
+
+REM Don't translate timestamps to the UTC timezone. (Don't uncomment the following line w/o serious reason. Timestamps should be in UTC, at least in dumpts.)
+REM set "COMMON_OPTS=%COMMON_OPTS% --skip-tz-utc"
 REM ================== END CONFIG ==============
 
 REM Filename used if we dump ALL databases
