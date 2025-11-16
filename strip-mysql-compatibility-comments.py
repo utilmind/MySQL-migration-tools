@@ -189,7 +189,7 @@ def load_table_metadata(tsv_path: str) -> Tuple[Dict[str, Dict[str, Any]], Optio
 
     sys.stderr.write(
         f"Loaded metadata for {len(meta)} tables"
-        f"{(' in schema ' + default_schema!r) if default_schema else ''}.\n"
+        f"{(f' in schema {default_schema!r}') if default_schema else ''}.\n"
     )
     return meta, default_schema
 

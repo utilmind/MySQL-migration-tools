@@ -8,3 +8,4 @@
 *.log
 /ps1
 _*
+*.credentials.*
