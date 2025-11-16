@@ -2,6 +2,10 @@
 ###############################################################################
 #  Database Dump Utility (db-dump.sh)
 #
+#  Part of: MySQL Migration Tools
+#  Copyright (c) 2025 utilmind
+#  https://github.com/utilmind/MySQL-migration-tools
+#
 #  Description:
 #      Safe, portable, prefix-aware MySQL/MariaDB dump tool.
 #      - Supports per-environment configuration files.
@@ -19,8 +23,6 @@
 #      ./db-dump.sh [--skip-optimize] dump-name.sql [configuration-name] ["table1 table2 ..."]
 #
 #  License: MIT
-#  Repository: https://github.com/utilmind/MySQL-migration-tools
-#
 #  (c) utilmind, 2012-2025
 #    15.10.2024: Each dump have date, don't overwrite past days backups. Old backups can be deleted by garbage collector.
 #    26.08.2025: Multiple table prefixes.

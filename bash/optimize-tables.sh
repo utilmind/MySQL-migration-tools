@@ -2,6 +2,10 @@
 ###############################################################################
 #  Table Optimization Utility (optimize-tables.sh)
 #
+#  Part of: MySQL Migration Tools
+#  Copyright (c) 2012-2025 utilmind
+#  https://github.com/utilmind/MySQL-migration-tools
+#
 #  Description:
 #      Standalone MySQL/MariaDB maintenance tool used to improve storage
 #      performance and optimizer statistics.
@@ -16,8 +20,6 @@
 #      ./optimize-tables.sh [configuration-name] ["table1 table2 ..."]
 #
 #  License: MIT
-#  Repository: https://github.com/utilmind/MySQL-migration-tools
-#  (c) utilmind, 2012-2025
 ###############################################################################
 
 set -euo pipefail
