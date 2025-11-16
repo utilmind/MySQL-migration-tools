@@ -168,8 +168,9 @@ if defined SQLBIN (
 
 
 REM Ask for password only if PASS is empty
+echo Preparing database dump from %HOST%:%PORT% on behalf of '%USER%'...
 if "%PASS%"=="" (
-  echo Enter password for %USER%@%HOST% ^(INPUT WILL BE VISIBLE^)
+  echo Enter password for %USER%@%HOST% ^(INPUT WILL BE VISIBLE^) or press Ctrl+C to terminate.
   set /p "PASS=> "
   echo.
 )
