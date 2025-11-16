@@ -108,7 +108,7 @@ echo === Exporting users and grants to "%USERDUMP%" ===
 
 REM Get list of users@hosts; skip system accounts like root, mariadb.sys, mysql.sys, mysql.session
 "%SQLBIN%%SQLCLI%" -h %HOST% -P %PORT% -u %USER% -p%PASS% -N -B ^
-  -e "SELECT CONCAT('''',User,'''@''',Host,'''') FROM mysql.user WHERE User<>'' AND User NOT IN ('root','mariadb.sys','mysql.sys','mysql.session')" > "%USERLIST%"
+  -e "SELECT CONCAT('''',User,'''@''',Host,'''') FROM mysql.user WHERE User<>'' AND User NOT IN ('root','mariadb.sys','mysql.sys','mysql.session','rdsadmin')" > "%USERLIST%"
 
 if errorlevel 1 (
   echo ERROR: Could not retrieve user list. See "%LOG%" for details.
