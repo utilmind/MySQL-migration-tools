@@ -5,14 +5,18 @@
 #  Description:
 #      Safe, portable, prefix-aware MySQL/MariaDB dump tool.
 #      - Supports per-environment configuration files.
-#      - Supports selective table exports (prefix-based).
+#      - Supports selective table exports:
+#          * explicit table list (3rd parameter), OR
+#          * prefix-based selection via dbTablePrefix.
 #      - Generates reproducible UTF-8 dumps with consistent CREATE TABLE clauses.
 #      - Optionally post-processes dumps with Python to restore original
 #        charset/collation/table options for cross-server imports.
 #      - Compresses resulting dump into .rar archive.
+#      - Optionally runs table optimization via "optimize-tables.sh" (can be
+#        disabled with --skip-optimize).
 #
 #  Usage:
-#      ./db-dump.sh dump-name.sql [database-name]
+#      ./db-dump.sh [--skip-optimize] dump-name.sql [configuration-name] ["table1 table2 ..."]
 #
 #  License: MIT
 #  Repository: https://github.com/utilmind/MySQL-migration-tools
@@ -145,19 +149,31 @@ log_ok()    { printf "%b[OK]%b %s\n"    "$COLOR_OK" "$COLOR_RESET" "$*"; }
 print_help() {
   scriptName=$(basename "$0")
   cat << EOF
-Usage: $scriptName dump-name.sql [database-name]
+Usage:
+    $scriptName [--skip-optimize] dump-name.sql [configuration-name] ["table1 table2 ..."]
 
-dump-name.sql (Required)
-    The exported filename can automatically contain current date.
-    If filename contains '@', it will be replaced with current date YYYYMMDD.
-    Example:
-        $scriptName exported_data_@.sql configuration-name
-    (So this tool can be executed by the crontab to produce daily files with unique names.)
+Options:
+    --skip-optimize
+        Do not run optimize-tables.sh before dumping (skip MyISAM OPTIMIZE / InnoDB ANALYZE).
 
-database-name (Optional)
-    Used to locate credentials file with name ".configuration-name.credentials.sh"
-    placed in the same directory as this script.
-    If not provided, then ".credentials.sh" will be used.
+Arguments:
+    dump-name.sql (Required)
+        The exported filename can automatically contain current date.
+        If filename contains '@', it will be replaced with current date YYYYMMDD.
+        Example:
+            $scriptName exported_data_@.sql my-config
+        (So this tool can be executed by the crontab to produce daily files with unique names.)
+
+    configuration-name (Optional)
+        Used to locate credentials file with name ".configuration-name.credentials.sh"
+        placed in the same directory as this script.
+        If not provided, then ".credentials.sh" will be used.
+
+    explicit tables list (Optional, third parameter)
+        Quoted space-separated list of tables to export.
+        If provided, dbTablePrefix is ignored and tables are taken exactly from this list.
+        Example:
+            $scriptName dump.sql my-config "table1 table2 table_user stats"
 
     DB credentials file example (.credentials.sh or .configuration-name.credentials.sh):
 
@@ -173,13 +189,16 @@ database-name (Optional)
         # dbTablePrefix=('table_prefix_' 'table_prefix2_')
 
 (c) utilmind@gmail.com, 2012-2025
-    15.10.2024: Each dump have date, don't overwrite past days backups. Old backups can be deleted by garbage collector.
+    15.10.2024: Each dump has date, don't overwrite past days backups.
     26.08.2025: Multiple table prefixes.
     15.11.2025: Request password if not specified in configuration;
                 Process dump to remove MySQL compatibility comments
                 + provide missing details (server defaults) to the 'CREATE TABLE' statements
                   (to solve issues with collations on import).
                 (These features require Python3+ installed.)
+                + provide missing details (server defaults) to the 'CREATE TABLE' statements.
+    16.11.2025: Explicit table list as third parameter; table optimization moved to optimize-tables.sh;
+                --skip-optimize flag added.
 
 EOF
 }
@@ -192,19 +211,25 @@ if [ $# -eq 0 ]; then
     exit 1
 fi
 
-# Handle optional flags (-h / --help)
-while [[ "$1" == -* ]] ; do
+run_optimize=1
+
+# Handle optional flags (-h / --help / --skip-optimize)
+while [[ "${1-}" == -* ]] ; do
     case "$1" in
         -?|-h|-help|--help)
             print_help
             exit 0
+            ;;
+        --skip-optimize)
+            run_optimize=0
+            shift
             ;;
         --)
             shift
             break
             ;;
         *)
-            log_error "ERROR: Invalid parameter: '$1'"
+            log_error "Invalid parameter: '$1'"
             exit 1
             ;;
     esac
@@ -212,16 +237,19 @@ done
 
 # Now we expect:
 #   1) dump-name.sql (required)
-#   2) database-name (optional)
+#   2) configuration-name (optional)
+#   3) explicit tables list (optional, quoted)
 if [ $# -lt 1 ]; then
     scriptName=$(basename "$0")
-    log_error "ERROR: Missing required parameters."
-    echo "Usage: $scriptName dump-name.sql [database-name]"
+    log_error "Missing required parameters."
+    echo "Usage: $scriptName [--skip-optimize] dump-name.sql [configuration-name] [\"table1 table2 ...\"]"
     exit 1
 fi
 
 dumpTemplate="$1"
-dbConfigName="${2:-}"   # may be empty
+dbConfigName="${2:-}"       # may be empty
+tablesListRaw="${3:-}"      # may be empty (quoted space-separated list of tables)
+
 
 # ---------------- BASIC PATHS / FILENAMES ----------------
 
@@ -230,15 +258,11 @@ scriptDir=$(dirname "$thisScript")
 
 # Temporary directory for helper files (table lists, metadata, etc.)
 tempDir="$scriptDir/_temp"
-# Create $tempDir if not exists
 mkdir -p "$tempDir"
 
-# Temporary files, table lists...
-myisamTablesFilename="$tempDir/_${dbConfigName}-optimize_tables.txt"
-innoDBTablesFilename="$tempDir/_${dbConfigName}-analyze_tables.txt"
+myisamTablesFilename="$tempDir/_${dbConfigName}-optimize_tables.txt"   # used only by optimize-tables.sh
+innoDBTablesFilename="$tempDir/_${dbConfigName}-analyze_tables.txt"    # used only by optimize-tables.sh
 allTablesFilename="$tempDir/_${dbConfigName}-export_tables.txt"
-# TSV with table metadata for Python post-processing.
-# We keep it in the temp directory, with predictable name.
 tablesMetaFilename="$tempDir/_${dbConfigName}-tables_meta.tsv"
 
 current_date=$(date +"%Y%m%d")
@@ -247,9 +271,6 @@ targetFilename=$(echo "$dumpTemplate" | sed "s/@/${current_date}/g")
 
 # ---------------- LOAD CREDENTIALS ----------------
 
-# Select credentials file:
-#   if database-name is given -> .database-name.credentials.sh
-#   otherwise                 -> .credentials.sh
 if [ -n "$dbConfigName" ]; then
     credentialsFile="$scriptDir/.${dbConfigName}.credentials.sh"
 else
@@ -257,13 +278,12 @@ else
 fi
 
 if [ ! -r "$credentialsFile" ]; then
-    log_error "ERROR: Credentials file '$credentialsFile' not found or not readable."
+    log_error "Credentials file '$credentialsFile' not found or not readable."
     echo "Please create it with DB connection settings:"
     echo "  dbHost, dbPort, dbName, dbUsername, [dbPassword], [dbTablePrefix]"
     exit 1
 fi
 
-# Load DB credentials (and optional dbTablePrefix override)
 # Expected variables:
 #   dbHost, dbPort, dbName, dbUsername, optional dbPassword, optional dbTablePrefix
 . "$credentialsFile"
@@ -273,7 +293,7 @@ if [ -z "${dbName:-}" ]; then
     if [ -n "$dbConfigName" ]; then
         dbName="$dbConfigName"
     else
-        log_error "ERROR: 'dbName' is not defined in credentials file '$credentialsFile' and no database-name argument was provided."
+        log_error "'dbName' is not defined in credentials file '$credentialsFile' and no configuration-name argument was provided."
         exit 1
     fi
 fi
@@ -293,111 +313,131 @@ mysqlConnOpts=(
 )
 
 
-# ---------------- BUILD TABLE FILTER (PREFIXES) ----------------
+# --------- OPTIONAL TABLE OPTIMIZATION / ANALYZE (if not skipped with --skip-optimize) ---------
 
-# Build SQL WHERE for multiple prefixes
-# Example result: (table_name LIKE 'user\_%' OR table_name LIKE 'beta\_%')
-like_clause=""
-for p in "${dbTablePrefix[@]}"; do
-    esc=${p//\'/\'\'}     # escape single quotes
-    esc=${esc//_/\\_}     # make '_' literal in LIKE
-    if [ -z "$like_clause" ]; then
-        like_clause="(table_name LIKE '${esc}%')"
+optScript="$scriptDir/optimize-tables.sh"
+if [ "$run_optimize" -eq 1 ]; then
+    if [ -x "$optScript" ]; then
+        if [ -n "$tablesListRaw" ]; then
+            # Explicit tables list: pass configuration name (may be empty) and tables string
+            log_info "Running table optimization (explicit table list) via $optScript ..."
+            if [ -n "$dbConfigName" ]; then
+                "$optScript" "$dbConfigName" "$tablesListRaw"
+            else
+                "$optScript" "" "$tablesListRaw"
+            fi
+        else
+            # No explicit table list: rely on dbTablePrefix inside optimize-tables.sh
+            log_info "Running table optimization (prefix-based) via $optScript ..."
+            if [ -n "$dbConfigName" ]; then
+                "$optScript" "$dbConfigName"
+            else
+                "$optScript"
+            fi
+        fi
     else
-        like_clause="$like_clause OR (table_name LIKE '${esc}%')"
+        log_info "Table optimization script not found or not executable: $optScript"
+        log_info "Skipping MyISAM optimization and InnoDB analyze."
     fi
-done
-like_clause="($like_clause)"
-
-
-# ---------------- GENERATE TABLE METADATA TSV ----------------
-# This is used by strip-mysql-compatibility-comments.py to:
-#   * fill missing ENGINE / ROW_FORMAT / COLLATION in CREATE TABLE
-#   * keep resulting schema as close to original server as possible.
-
-log_info "Dumping table metadata to '$tablesMetaFilename' ..."
-if ! mysql "${mysqlConnOpts[@]}" -N \
-    -e "SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, ROW_FORMAT, TABLE_COLLATION
-        FROM INFORMATION_SCHEMA.TABLES
-        WHERE TABLE_SCHEMA = '$dbName'
-          AND ${like_clause}
-          AND TABLE_NAME NOT LIKE '%_backup_%'
-        ORDER BY TABLE_SCHEMA, TABLE_NAME;" > "$tablesMetaFilename"
-then
-    log_warn "WARNING: Failed to dump table metadata. TSV will be missing, CREATE TABLE enhancement may be skipped." >&2
 fi
 
 
-# ---------------- PREPARE TABLE LISTS ----------------
+# ---------------- TABLE LIST / METADATA PREPARATION ----------------
 
-# Get tables. Only BASE TABLEs with non-InnoDB/non-Memory engine can be optimized.
-mysql "${mysqlConnOpts[@]}" -N "$dbName" \
-    -e "SELECT table_name
-        FROM INFORMATION_SCHEMA.TABLES
-        WHERE table_schema='$dbName'
-          AND table_type='BASE TABLE'
-          AND ENGINE = 'MyISAM'
-          AND ${like_clause}
-          AND table_name NOT LIKE '%_backup_%'
-        ORDER BY table_name" > "$myisamTablesFilename"
+tablesListInClause=""
+declare -a explicitTables=()
 
-# Get tables. Only BASE TABLEs with InnoDB engine for analyze (instead of optimization).
-mysql "${mysqlConnOpts[@]}" -N "$dbName" \
-    -e "SELECT table_name
-        FROM INFORMATION_SCHEMA.TABLES
-        WHERE table_schema='$dbName'
-          AND table_type='BASE TABLE'
-          AND ENGINE = 'InnoDB'
-          AND ${like_clause}
-          AND table_name NOT LIKE '%_backup_%'
-        ORDER BY table_name" > "$innoDBTablesFilename"
+if [ -n "$tablesListRaw" ]; then
+    # Explicit tables mode: ignore dbTablePrefix
+    read -r -a explicitTables <<< "$tablesListRaw"
 
-# Get all kinds of tables: BASE TABLEs and VIEWS for export.
-mysql "${mysqlConnOpts[@]}" -N "$dbName" \
-    -e "SELECT table_name
-        FROM INFORMATION_SCHEMA.TABLES
-        WHERE table_schema='$dbName'
-          AND ${like_clause}
-          AND table_name NOT LIKE '%_backup_%'
-        ORDER BY table_name" > "$allTablesFilename"
+    if [ ${#explicitTables[@]} -eq 0 ]; then
+        log_error "Explicit table list (third parameter) is empty after parsing."
+        exit 1
+    fi
 
+    for t in "${explicitTables[@]}"; do
+        esc=${t//\'/\'\'}   # escape single quotes
+        if [ -z "$tablesListInClause" ]; then
+            tablesListInClause="'$esc'"
+        else
+            tablesListInClause="$tablesListInClause, '$esc'"
+        fi
+    done
 
-# ---------------- OPTIMIZE / ANALYZE TABLES ----------------
+    # ---- GENERATE TABLE METADATA TSV (EXPLICIT TABLES) ----
+    log_info "Dumping table metadata for selected tables to '$tablesMetaFilename' ..."
+    if ! mysql "${mysqlConnOpts[@]}" -N \
+        -e "SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, ROW_FORMAT, TABLE_COLLATION
+            FROM INFORMATION_SCHEMA.TABLES
+            WHERE TABLE_SCHEMA = '$dbName'
+              AND TABLE_NAME IN (${tablesListInClause})
+            ORDER BY TABLE_SCHEMA, TABLE_NAME;" > "$tablesMetaFilename"
+    then
+        log_warn "Failed to dump table metadata (explicit tables). TSV will be missing, CREATE TABLE enhancement may be skipped."
+    fi
 
-# Optimize MyISAM tables, to export data faster.
-# NOTE (AK 2025-10-04): we don't need to optimize InnoDB tables. And we mostly have InnoDB.
-if [ -s "$myisamTablesFilename" ]; then
-    log_info "Optimizing MyISAM tables..."
-    mysqlcheck --optimize --verbose \
-        "${mysqlConnOpts[@]}" \
-        --databases "$dbName" \
-        --tables $(cat "$myisamTablesFilename" | xargs) \
-    || log_warn "WARNING: Failed to optimize MyISAM tables ... insufficient privileges). Continuing without optimization." >&2
+    # Prepare list of tables to export (one name per line)
+    printf "%s\n" "${explicitTables[@]}" > "$allTablesFilename"
+
+else
+    # ---- BUILD TABLE FILTER (PREFIXES) ----
+
+    if [ -z "${dbTablePrefix+x}" ]; then
+        log_error "dbTablePrefix is not defined in the configuration and no explicit table list was provided."
+        echo "Either define dbTablePrefix in the credentials file or pass explicit tables as the third parameter."
+        exit 1
+    fi
+
+    like_clause=""
+    for p in "${dbTablePrefix[@]}"; do
+        esc=${p//\'/\'\'}     # escape single quotes
+        esc=${esc//_/\\_}     # make '_' literal in LIKE
+        if [ -z "$like_clause" ]; then
+            like_clause="(table_name LIKE '${esc}%')"
+        else
+            like_clause="$like_clause OR (table_name LIKE '${esc}%')"
+        fi
+    done
+    like_clause="($like_clause)"
+
+    # ---- GENERATE TABLE METADATA TSV (BY PREFIX) ----
+    log_info "Dumping table metadata to '$tablesMetaFilename' ..."
+    if ! mysql "${mysqlConnOpts[@]}" -N \
+        -e "SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, ROW_FORMAT, TABLE_COLLATION
+            FROM INFORMATION_SCHEMA.TABLES
+            WHERE TABLE_SCHEMA = '$dbName'
+              AND ${like_clause}
+              AND TABLE_NAME NOT LIKE '%_backup_%'
+            ORDER BY TABLE_SCHEMA, TABLE_NAME;" > "$tablesMetaFilename"
+    then
+        log_warn "Failed to dump table metadata. TSV will be missing, CREATE TABLE enhancement may be skipped."
+    fi
+
+    # ---- PREPARE EXPORT TABLE LIST (BY PREFIX) ----
+    mysql "${mysqlConnOpts[@]}" -N "$dbName" \
+        -e "SELECT table_name
+            FROM INFORMATION_SCHEMA.TABLES
+            WHERE table_schema='$dbName'
+              AND ${like_clause}
+              AND table_name NOT LIKE '%_backup_%'
+            ORDER BY table_name" > "$allTablesFilename"
 fi
 
-# Analyze InnoDB tables to optimize further queries.
-if [ -s "$innoDBTablesFilename" ]; then
-    log_info "Analyzing InnoDB tables..."
-    mysqlcheck --analyze --verbose \
-        "${mysqlConnOpts[@]}" \
-        --databases "$dbName" \
-        --tables $(cat "$innoDBTablesFilename" | xargs) \
-    || log_warn "WARNING: Failed to analyze InnoDB tables (...bably insufficient privileges). Continuing without analyze." >&2
-fi
+
 # ---------------- DUMP DATABASE ----------------
 
-# Export using COMMON_OPTS built above.
+if [ ! -s "$allTablesFilename" ]; then
+    log_warn "No tables selected for export. The resulting dump will be empty."
+fi
+
+log_info "Running mysqldump for database '$dbName' into '$targetFilename' ..."
 mysqldump \
     "${mysqlConnOpts[@]}" \
     "${COMMON_OPTS[@]}" \
     "$dbName" \
     $(cat "$allTablesFilename" | xargs) \
     > "$targetFilename"
-
-# BTW, alternative syntax to export everything by databases:
-# mysqldump -h [host] -u [user] -p --databases [database names] \
-#     --set-gtid-purged=OFF --column-statistics=0 --no-tablespaces \
-#     --triggers --routines --events > FILENAME.sql
 
 
 # ---------------- POST-PROCESS DUMP WITH PYTHON ----------------
@@ -410,17 +450,15 @@ postProcessor="$scriptDir/strip-mysql-compatibility-comments.py"
 if [ -f "$postProcessor" ]; then
     if command -v python3 >/dev/null 2>&1; then
         tmpProcessed="${targetFilename%.sql}.clean.sql"
-        #log_info "Post-processing dump with Python script: $postProcessor"
-        #log_info "  Input : $targetFilename"
-        #log_info "  Output: $tmpProcessed"
-        #log_info "  TSV   : $tablesMetaFilename"
+        log_info "Post-processing dump with Python script: $(basename "$postProcessor")"
         python3 "$postProcessor" "$targetFilename" "$tmpProcessed" "$tablesMetaFilename"
         mv "$tmpProcessed" "$targetFilename"
+        log_ok "Dump post-processing completed."
     else
-        log_warn "WARNING: Python3 is not installed; skipping dump post-processing." >&2
+        log_warn "Python3 is not installed; skipping dump post-processing."
     fi
 else
-    log_warn "WARNING: Dump post-processing script not found: $postProcessor; skipping." >&2
+    log_warn "Dump post-processing script not found: $postProcessor; skipping."
 fi
 
 
@@ -435,8 +473,7 @@ fi
 # Use 9 (best) for automatic, scheduled backups and 5 (normal) for manual backups, when you need db now.
 #gzip -9 -f "$targetFilename"
 
-# compress with rar (compression level from 1 to 5, from fast to best)
-# -ep = don't preserve file path
-# -df = delete file after archiving
 rar a -m5 -ep -df "$targetFilename.rar" "$targetFilename"
-sudo chown 660 "$targetFilename.rar"
+sudo chown 660 "$targetFilename.rar" || true
+
+log_ok "Dump finished and archived as '$targetFilename.rar'."
