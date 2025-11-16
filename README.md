@@ -43,7 +43,7 @@ Then copy content of `bash` directory to your server instance.
 * `db-dump.sh /path/dump-name.sql` — dumps all into a single SQL file. Configuration (connection settings, and credentials, username/password) will be taken from `.credentials.sh` located in the same directory with `db-dump.sh`.
 * `db-dump.sh --help` — displays help.
 
-⚠️ Please always make sure that device has enough space for dumps.
+⚠️ Please always make sure that device has enough space for dumps.<br />
 ⚠️ MySQL (not MariaDB) can display a warning like
 mysqldump: [Warning] Using a password on the command line interface can be insecure.
 Yes, it's definitely is, but ignore this warning. This is simply the password entered or specified in the configuration,
