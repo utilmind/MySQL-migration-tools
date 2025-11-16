@@ -126,7 +126,7 @@ fi
 if [ ! -r "$credentialsFile" ]; then
     log_error "Credentials file '$credentialsFile' not found or not readable."
     echo "Please create it with DB connection settings:"
-    echo "  dbHost, dbPort, dbName, dbUsername, [dbPassword], [dbTablePrefix]"
+    echo "  dbHost, dbPort, dbName, dbUsername, [dbPass], [dbTablePrefix]"
     exit 1
 fi
 
@@ -143,16 +143,16 @@ if [ -z "${dbName:-}" ]; then
 fi
 
 # Ask for password if it is not defined or empty
-if [ -z "${dbPassword:-}" ]; then
-    read -s -p "Enter password for MySQL user '$dbUsername' (database '$dbName'): " dbPassword
+if [ -z "${dbPass:-}" ]; then
+    read -s -p "Enter password for MySQL user '$dbUser' (database '$dbName'): " dbPass
     echo
 fi
 
 mysqlConnOpts=(
     --host="$dbHost"
     --port="$dbPort"
-    --user="$dbUsername"
-    --password="$dbPassword"
+    --user="$dbUser"
+    --password="$dbPass"
 )
 
 

@@ -9,4 +9,4 @@
 # However it's good only for local database only. Not needed for RDS instances of AWS, they are maintained separately.
 
 # check & auto-repair mySQL tables
-mysqlcheck --check --auto-repair --verbose --host=$dbHost --port=$dbPort --databases $dbName --user=$dbUsername --password=$dbPassword
+mysqlcheck --check --auto-repair --verbose --host=$dbHost --port=$dbPort --databases $dbName --user=$dbUser --password=$dbPass

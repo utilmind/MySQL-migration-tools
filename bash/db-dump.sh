@@ -183,9 +183,9 @@ Arguments:
         dbHost='localhost'
         dbPort=3306
         dbName='your_database_name'
-        dbUsername='your_database_user'
-        dbPassword='your-password'
-        # dbPassword can be omitted; in this case the script will ask for it interactively.
+        dbUser='your_database_user'
+        dbPass='your-password'
+        # dbPass can be omitted; in this case the script will ask for it interactively.
 
         # Optional: you can override default table prefixes for this DB:
         # dbTablePrefix=('table_prefix1_' 'table_prefix2_' 'bot_' 'email_' 'user_')
@@ -272,12 +272,12 @@ fi
 if [ ! -r "$credentialsFile" ]; then
     log_error "Credentials file '$credentialsFile' not found or not readable."
     echo "Please create it with DB connection settings:"
-    echo "  dbHost, dbPort, dbName, dbUsername, [dbPassword], [dbTablePrefix]"
+    echo "  dbHost, dbPort, dbName, dbUser, [dbPass], [dbTablePrefix]"
     exit 1
 fi
 
 # Expected variables:
-#   dbHost, dbPort, dbName, dbUsername, optional dbPassword, optional dbTablePrefix
+#   dbHost, dbPort, dbName, dbUser, optional dbPass, optional dbTablePrefix
 . "$credentialsFile"
 
 # If dbName is not defined in credentials, we can fall back to dbConfigName (if set).
@@ -291,8 +291,8 @@ if [ -z "${dbName:-}" ]; then
 fi
 
 # Ask for password if it is not defined or empty
-if [ -z "${dbPassword:-}" ]; then
-    read -s -p "Enter password for MySQL user '$dbUsername' (database '$dbName'): " dbPassword
+if [ -z "${dbPass:-}" ]; then
+    read -s -p "Enter password for MySQL user '$dbUser' (database '$dbName'): " dbPass
     echo
 fi
 
@@ -300,8 +300,8 @@ fi
 mysqlConnOpts=(
     --host="$dbHost"
     --port="$dbPort"
-    --user="$dbUsername"
-    --password="$dbPassword"
+    --user="$dbUser"
+    --password="$dbPass"
 )
 
 
