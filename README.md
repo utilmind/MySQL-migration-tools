@@ -39,9 +39,11 @@ Before using, **open `db-dump.bat` in a text/code editor** and review the config
 Then copy content of `bash` directory to your server instance.
 
 * `db-dump.sh /path/dump-name.sql configuration-name` — dumps all databases into a single SQL file using connection settings from the configuration file named `.configuration-name.credentials.sh` in the same directory where `db-dump.sh` is located. If configuration-name not specified, all settings will be taken from `.credentials.sh`.
-* `db-dump.sh /path/dump-name.sql` — dumps all databases into a single SQL file. Configuration (connection settings, and credentials, username/password) will be taken from `.credentials.sh` located in the same directory with `db-dump.sh`.
+* `db-dump.sh /var/www/db-dump/dump-name-@.sql configuration-name` — dumps all into a single SQL file. Current date in **YYYYMMDD** format substituted instead of **@** character in the file name.
+* `db-dump.sh /path/dump-name.sql` — dumps all into a single SQL file. Configuration (connection settings, and credentials, username/password) will be taken from `.credentials.sh` located in the same directory with `db-dump.sh`.
 * `db-dump.sh --help` — displays help.
 
+⚠️ Please always make sure that device has enough space for dumps.
 ⚠️ MySQL (not MariaDB) can display a warning like
 mysqldump: [Warning] Using a password on the command line interface can be insecure.
 Yes, it's definitely is, but ignore this warning. This is simply the password entered or specified in the configuration,
