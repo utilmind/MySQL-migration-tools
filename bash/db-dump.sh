@@ -186,6 +186,7 @@ mkdir -p "$tempDir"
 
 # Temporary files, table lists...
 myisamTablesFilename="$tempDir/_${dbConfigName}-optimize_tables.txt"
+innoDBTablesFilename="$tempDir/_${dbConfigName}-analyze_tables.txt"
 allTablesFilename="$tempDir/_${dbConfigName}-export_tables.txt"
 # TSV with table metadata for Python post-processing.
 # We keep it in the temp directory, with predictable name.
@@ -280,16 +281,27 @@ fi
 
 # ---------------- PREPARE TABLE LISTS ----------------
 
-# Get tables. Only BASE TABLEs with non-InnoDB engine can be optimized.
+# Get tables. Only BASE TABLEs with non-InnoDB/non-Memory engine can be optimized.
 mysql "${mysqlConnOpts[@]}" -N "$dbName" \
     -e "SELECT table_name
         FROM INFORMATION_SCHEMA.TABLES
         WHERE table_schema='$dbName'
           AND table_type='BASE TABLE'
-          AND ENGINE <> 'InnoDB'
+          AND ENGINE = 'MyISAM'
           AND ${like_clause}
           AND table_name NOT LIKE '%_backup_%'
         ORDER BY table_name" > "$myisamTablesFilename"
+
+# Get tables. Only BASE TABLEs with InnoDB engine for analyze (instead of optimization).
+mysql "${mysqlConnOpts[@]}" -N "$dbName" \
+    -e "SELECT table_name
+        FROM INFORMATION_SCHEMA.TABLES
+        WHERE table_schema='$dbName'
+          AND table_type='BASE TABLE'
+          AND ENGINE = 'InnoDB'
+          AND ${like_clause}
+          AND table_name NOT LIKE '%_backup_%'
+        ORDER BY table_name" > "$innoDBTablesFilename"
 
 # Get all kinds of tables: BASE TABLEs and VIEWS for export.
 mysql "${mysqlConnOpts[@]}" -N "$dbName" \
@@ -303,18 +315,25 @@ mysql "${mysqlConnOpts[@]}" -N "$dbName" \
 
 # ---------------- OPTIMIZE NON-INNODB TABLES ----------------
 
-# Optimize MyISAM (and other non-InnoDB) tables, to export data faster.
-# NOTE (AK 2025-10-04): we don't need to optimize InnoDB tables. And we mostly have InnoDB.
+# Optimize MyISAM tables, to export data faster.
 if [ -s "$myisamTablesFilename" ]; then
+    echo Optimizing MyISAM tables...
     mysqlcheck --optimize --verbose \
         "${mysqlConnOpts[@]}" \
         --databases "$dbName" \
         --tables $(cat "$myisamTablesFilename" | xargs) \
-    || echo "WARNING: Failed to optimize tables (probably insufficient privileges). Continuing without optimization." >&2
-else
-    echo "No non-InnoDB tables found matching configured prefixes. Skipping optimization step."
+    || echo "WARNING: Failed to optimize MyISAM tables (probably insufficient privileges). Continuing without optimization." >&2
 fi
 
+# Analyze InnoDB tables to optimize further queries.
+if [ -s "$innoDBTablesFilename" ]; then
+    echo Analyizing InnoDB tables...
+    mysqlcheck --analyze --verbose \
+        "${mysqlConnOpts[@]}" \
+        --databases "$dbName" \
+        --tables $(cat "$innoDBTablesFilename" | xargs) \
+    || echo "WARNING: Failed to analyze InnoDB tables (probably insufficient privileges). Continuing without analyze." >&2
+fi
 # ---------------- DUMP DATABASE ----------------
 
 # Export using COMMON_OPTS built above.

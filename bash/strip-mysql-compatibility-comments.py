@@ -426,7 +426,7 @@ def process_dump_stream(
 
     sys.stderr.write(
         f"Removing MySQL compatibility comments from '{in_path}' "
-        f"({total_size:,} bytes) and\nsaving clean dump to '{out_path}'...\n"
+        f"({total_size:,} bytes)\nSaving clean dump to '{out_path}'...\n"
     )
 
     # State for CREATE TABLE enhancement
