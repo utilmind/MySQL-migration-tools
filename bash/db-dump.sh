@@ -110,6 +110,12 @@ dbConfigName="${2:-}"   # may be empty
 
 
 # ---------------- BASIC PATHS / FILENAMES ----------------
+# Temporary files, table lists...
+myisamTablesFilename="_$dbConfigName-optimize_tables.txt"
+allTablesFilename="_$dbConfigName-export_tables.txt"
+# TSV with table metadata for Python post-processing.
+# We keep it near the resulting dump file, with predictable name.
+tablesMetaFilename="_$dbConfigName-tables_meta.tsv"
 
 thisScript=$(readlink -f "$0") # alternative is $(realpath "$0"), if "realpath" is installed
 scriptDir=$(dirname "$thisScript")
@@ -118,13 +124,6 @@ allTablesFilename="$scriptDir/$allTablesFilename"
 
 current_date=$(date +"%Y%m%d")
 targetFilename=$(echo "$dumpTemplate" | sed "s/@/${current_date}/g")
-
-# Temporary files, table lists...
-myisamTablesFilename="_$dbConfigName-optimize_tables.txt"
-allTablesFilename="_$dbConfigName-export_tables.txt"
-# TSV with table metadata for Python post-processing.
-# We keep it near the resulting dump file, with predictable name.
-tablesMetaFilename="_$dbConfigName-tables_meta.tsv"
 
 
 # ---------------- LOAD CREDENTIALS ----------------
@@ -231,10 +230,11 @@ mysql --host="$dbHost" --port="$dbPort" --user="$dbUsername" --password="$dbPass
 # NOTE (AK 2025-10-04): we don't need to optimize InnoDB tables. And we mostly have InnoDB.
 if [ -s "$myisamTablesFilename" ]; then
     mysqlcheck --optimize --verbose \
-      --host="$dbHost" --port="$dbPort" \
-      --user="$dbUsername" --password="$dbPassword" \
-      --databases "$dbName" \
-      --tables $(cat "$myisamTablesFilename" | xargs)
+        --host="$dbHost" --port="$dbPort" \
+        --user="$dbUsername" --password="$dbPassword" \
+        --databases "$dbName" \
+        --tables $(cat "$myisamTablesFilename" | xargs) \
+    || echo "WARNING: Failed to optimize tables (probably insufficient privileges). Continuing without optimization." >&2
 else
     echo "No non-InnoDB tables found matching configured prefixes. Skipping optimization step."
 fi
