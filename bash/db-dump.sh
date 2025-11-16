@@ -3,8 +3,9 @@ set -euo pipefail
 
 
 # CONFIGURATION
-# Specify as bash array, even if only 1 prefix is used. Strings are not accepted. Only array is ok.
-dbTablePrefix=('silk_' 'silkx_' '3dproofer_' 'bot_' 'email_')
+# Optionally specify table prefixes to export.
+# Specify them only as bash array, even if only one prefix is used. Strings are not accepted.
+#dbTablePrefix=('table_prefix1_' 'table_prefix2_' 'bot_' 'email_' 'user_')
 
 
 # ---------------- BUILD DUMP OPTIONS (COMMON_OPTS) ----------------
