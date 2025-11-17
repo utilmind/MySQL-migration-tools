@@ -203,7 +203,7 @@ or:
 
 ---
 
-### 🧹 Stand-alone Table Optimization (`optimize-tables.sh`)
+## 🧹 Stand-alone Table Optimization (`optimize-tables.sh`)
 
 The script [`optimize-tables.sh`](bash/optimize-tables.sh) can be used **independently**, without running a full dump.
 
@@ -218,6 +218,94 @@ It safely performs:
 changes or data fixes, to quickly roll back everything if something goes wrong, but `*_backup_*` are really not needed in the dump.)
 
 This tool is ideal for scheduled maintenance (cron) or manual performance checks.
+
+---
+
+### ✔ How it selects tables
+
+The script supports **three independent modes**:
+
+#### 1) Explicit list of tables (manual mode)
+
+If the **2nd parameter** contains a quoted list of tables:
+
+```bash
+./optimize-tables.sh production "table1 table2 log_2025 user_session"
+```
+
+Then:
+
+- `dbTablePrefix` is ignored  
+- Only these tables are inspected  
+- Their engines are detected via `INFORMATION_SCHEMA`
+
+---
+
+### 2) Prefix-based mode (automatic)
+
+If the credentials file defines:
+
+```bash
+dbTablePrefix=('user_' 'order_' 'session_')
+```
+
+Then only tables starting with these prefixes are optimized/analyzed.
+
+Backup tables are ALWAYS excluded:
+
+```
+*_backup_*
+```
+
+---
+
+#### 3) Full-database mode (default)
+
+If **`dbTablePrefix` is not defined**,  
+or **defined but empty**,  
+and **no explicit table list is provided**,  
+
+then **all** tables from the database are processed (except backup tables):
+
+```bash
+./optimize-tables.sh production
+```
+
+---
+
+### ✔ How to run it
+
+#### Using default credentials:
+
+```bash
+./optimize-tables.sh
+```
+
+(using `.credentials.sh`)
+
+#### Using a configuration profile:
+
+```bash
+./optimize-tables.sh production
+```
+
+(using `.production.credentials.sh`)
+
+#### With explicit table list:
+
+```bash
+./optimize-tables.sh production "silk_session silk_order silk_log"
+```
+
+---
+
+### ✔ Cron usage example (Linux)
+
+```bash
+0 5 * * * /home/user/_db-utils/optimize-tables.sh production >/dev/null 2>&1
+```
+
+Runs daily at 05:00 and keeps the database healthy.
 
 ---
 
