@@ -264,7 +264,7 @@ and **no explicit table list is provided**,
 
 then **all** tables from the database are processed (except `_backup_` tables).
 
-### ✔ How to run it
+### ✔ Usage (how to run it)
 
 #### Using default credentials (`.credentials.sh`):
 
