@@ -404,9 +404,11 @@ else
         where_meta="$where_meta AND ($like_clause)"
         # For the export query we can safely reuse the same expression (case-insensitive)
         where_list="$where_list AND ($like_clause)"
-        log_info "dbTablePrefix is defined; exporting only tables matching configured prefixes."
+        # log_info "dbTablePrefix is defined; exporting only tables matching configured prefixes."
+        log_info "Exporting only tables matching configured prefixes: ${dbTablePrefix[@]}."
     else
-        log_info "dbTablePrefix is not defined; exporting all tables from database '$dbName' (excluding *_backup_*)."
+        # log_info "dbTablePrefix is not defined; exporting all tables from database '$dbName' (excluding *_backup_*)."
+        log_info "Exporting ALL tables from database '$dbName' (excluding *_backup_*)."
     fi
 
     # Exclude backup tables in any case
