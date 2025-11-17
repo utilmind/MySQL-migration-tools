@@ -265,8 +265,6 @@ then **all** tables from the database are processed (except `_backup_` tables):
 ./optimize-tables.sh production
 ```
 
----
-
 ### ✔ How to run it
 
 #### Using default credentials (`.credentials.sh`):
@@ -286,8 +284,6 @@ then **all** tables from the database are processed (except `_backup_` tables):
 ```bash
 ./optimize-tables.sh production "session order user log"
 ```
-
----
 
 ### ✔ Cron usage example (Linux)
 
