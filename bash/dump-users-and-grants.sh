@@ -11,6 +11,7 @@
 #    into a standalone SQL file.
 #
 #    Connection settings are loaded from:
+#      - hard-coded defaults in this script (have highest priority),
 #      - .credentials.sh
 #      - or .<config>.credentials.sh when --config <config> is used.
 #
@@ -19,6 +20,13 @@
 #      dbPort="3306"
 #      dbUser="silkcards_dump"
 #      dbPass="secret"
+#
+#    Rules:
+#      - HOST / PORT from credentials are used only if empty in this script.
+#      - USER from credentials is used only if USER in this script is empty.
+#      - If USER == dbUser and PASS is empty, PASS is taken from dbPass.
+#      - If USER != dbUser, dbPass is ignored; PASS from this script
+#        (or prompt) is used.
 #
 #    The MySQL client is expected to be available as "mysql" in PATH.
 #
@@ -31,23 +39,24 @@
 ###############################################################################
 
 # --------------------------- CONSTANTS ---------------------------------
-# Internal configuration profile name (used only for picking credentials file)
-CONFIG_NAME=""
+# Configuration profile name (used only for picking credentials file)
+dbConfigName=""
 
 # MySQL client executable name (from PATH)
 SQLCLI="mysql"
 
-# Connection params (will be filled from credentials; may fall back to defaults)
+# Connection params (defaults defined here have priority over `.credentials.sh`)
+# Remember, that requesting user privileges/grants from the system table (`mysql.user`) often requires higher privileges, than usually applied for the data dumper.
+# If USER is different than specified in dbUser of `.credentials.sh` and PASS is empty, then you will be prompted for a password.
 HOST=""
 PORT=""
-USER=""
+USER="root"
 PASS=""
 
 # Output SQL file (REQUIRED; set via first positional argument)
 USERDUMP=""
 
-# Log and temporary files (derived from USERDUMP directory)
-LOG=""
+# Temporary files (will be derived from scriptDir + dbConfigName)
 USERLIST=""
 TMPGRANTS=""
 
@@ -60,6 +69,13 @@ USER_PREFIX=""
 # System users list (SQL fragment inside NOT IN (...))
 SYSTEM_USERS_LIST="'root','mysql.sys','mysql.session','mysql.infoschema',"\
 "'mariadb.sys','mariadb.session','debian-sys-maint','healthchecker','rdsadmin'"
+
+# ------------------------ SCRIPT / TEMP DIRS ---------------------------
+# Temporary directory for helper files (user list, grants, etc.)
+thisScript=$(readlink -f "$0" 2>/dev/null || printf '%s' "$0") # fallback if readlink -f unavailable
+scriptDir=$(cd -- "$(dirname -- "$thisScript")" && pwd)
+tempDir="$scriptDir/_temp"
+mkdir -p "$tempDir"
 
 # --------------------------- HELP --------------------------------------
 print_help() {
@@ -80,14 +96,14 @@ Options:
   -h, --help           Show this help and exit.
 
 Notes:
-  - Connection settings are not configurable via CLI; they come only
-    from credentials files:
-      .credentials.sh
-      .<config>.credentials.sh (when --config <config> is used).
+  - Connection settings come from:
+      1) constants in this script (HOST/PORT/USER/PASS),
+      2) .credentials.sh or .<config>.credentials.sh
+         (HOST/PORT only if empty; USER only if empty;
+          PASS only if USER == dbUser and PASS is empty).
   - The first non-option argument is the output SQL file path.
 EOF
 }
-
 
 # ANSI colors (disabled if NO_COLOR is set or output is not a TTY)
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
@@ -105,13 +121,12 @@ log_ok()   { printf "%s[ OK ]%s %s\n" "$C_OK"   "$C_RESET" "$*"; }
 log_warn() { printf "%s[WARN]%s %s\n" "$C_WARN" "$C_RESET" "$*"; }
 log_err()  { printf "%s[FAIL]%s %s\n" "$C_ERR"  "$C_RESET" "$*"; }
 
-
 # ------------------------- ARG PARSING ---------------------------------
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --config)
-        CONFIG_NAME="$2"; shift 2 ;;
+        dbConfigName="$2"; shift 2 ;;
       --user-prefix)
         USER_PREFIX="$2"; shift 2 ;;
       --include-system-users)
@@ -156,17 +171,13 @@ parse_args() {
   done
 }
 
-
 # -------------------- CREDENTIALS LOADING ------------------------------
 load_credentials() {
-  # Determine script directory (where this .sh file lives)
-  local base_dir cred_file
-  base_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-
-  if [[ -n "$CONFIG_NAME" ]]; then
-    cred_file="${base_dir}/.${CONFIG_NAME}.credentials.sh"
+  local cred_file
+  if [[ -n "$dbConfigName" ]]; then
+    cred_file="${scriptDir}/.${dbConfigName}.credentials.sh"
   else
-    cred_file="${base_dir}/.credentials.sh"
+    cred_file="${scriptDir}/.credentials.sh"
   fi
 
   if [[ -f "$cred_file" ]]; then
@@ -174,20 +185,41 @@ load_credentials() {
     # shellcheck disable=SC1090
     . "$cred_file"
   else
-    if [[ -n "$CONFIG_NAME" ]]; then
+    if [[ -n "$dbConfigName" ]]; then
       log_warn "Credentials file not found: ${cred_file}"
     else
       log_warn "Credentials file not found: ${cred_file}; using built-in defaults."
     fi
   fi
 
-  # Apply credentials → internal HOST/PORT/USER/PASS
-  # IMPORTANT: expected variable names in credentials:
+  # Expected variables in credentials:
   #   dbHost, dbPort, dbUser, dbPass
-  if [[ -n "${dbHost:-}" ]]; then HOST="$dbHost"; fi
-  if [[ -n "${dbPort:-}" ]]; then PORT="$dbPort"; fi
-  if [[ -n "${dbUser:-}" ]]; then USER="$dbUser"; fi
-  if [[ -n "${dbPass:-}" ]]; then PASS="$dbPass"; fi
+  local credHost="${dbHost:-}"
+  local credPort="${dbPort:-}"
+  local credUser="${dbUser:-}"
+  local credPass="${dbPass:-}"
+
+  # HOST / PORT: use credentials only if still empty
+  if [[ -z "$HOST" && -n "$credHost" ]]; then
+    HOST="$credHost"
+  fi
+  if [[ -z "$PORT" && -n "$credPort" ]]; then
+    PORT="$credPort"
+  fi
+
+  # USER: use credentials only if still empty
+  if [[ -z "$USER" && -n "$credUser" ]]; then
+    USER="$credUser"
+  fi
+
+  # PASS:
+  # - If USER == credUser and PASS empty → take credPass.
+  # - If USER != credUser → completely ignore credPass.
+  if [[ "$USER" == "$credUser" ]]; then
+    if [[ -z "$PASS" && -n "$credPass" ]]; then
+      PASS="$credPass"
+    fi
+  fi
 
   # Fallbacks if some fields are still empty
   [[ -z "$HOST" ]] && HOST="localhost"
@@ -214,18 +246,16 @@ main() {
 
   load_credentials
 
-  # Derive directory for logs / temp from USERDUMP
-  local OUTDIR_INTERNAL
-  OUTDIR_INTERNAL="$(dirname -- "$USERDUMP")"
+  # Prepare temp filenames based on config name
+  local config_tag
+  if [[ -n "$dbConfigName" ]]; then
+    config_tag="$dbConfigName"
+  else
+    config_tag="default"
+  fi
 
-  mkdir -p "$OUTDIR_INTERNAL" || {
-    log_err "Failed to create directory for output file: ${OUTDIR_INTERNAL}"
-    exit 1
-  }
-
-  LOG="${OUTDIR_INTERNAL}/_users_errors.log"
-  USERLIST="${OUTDIR_INTERNAL}/__user-list.txt"
-  TMPGRANTS="${OUTDIR_INTERNAL}/__grants_tmp.txt"
+  USERLIST="${tempDir}/_${config_tag}-user_list.txt"
+  TMPGRANTS="${tempDir}/_${config_tag}-grants_tmp.txt"
 
   # Check that mysql client is available
   if ! command -v "$SQLCLI" >/dev/null 2>&1; then
@@ -241,11 +271,12 @@ main() {
   fi
 
   # Clean previous files
-  rm -f "$LOG" "$USERLIST" "$TMPGRANTS" "$USERDUMP"
+  rm -f "$USERLIST" "$TMPGRANTS" "$USERDUMP"
 
   log_info "Exporting users and grants from ${HOST}:${PORT} using ${SQLCLI}..."
   log_info "Output file: ${USERDUMP}"
   log_info "User prefix filter: ${USER_PREFIX:-<none>}"
+  log_info "Connecting as: ${USER}"
 
   # Build SQL to get user list
   local sql_userlist
@@ -267,8 +298,8 @@ main() {
 
   # Retrieve user list
   if ! run_mysql -h "$HOST" -P "$PORT" -u "$USER" -p"$PASS" -N -B \
-       -e "$sql_userlist" >"$USERLIST" 2>>"$LOG"; then
-    log_err "Could not retrieve user list. See '${LOG}' for details."
+       -e "$sql_userlist" >"$USERLIST"; then
+    log_err "Could not retrieve user list (see MySQL error above)."
     exit 1
   fi
 
@@ -300,8 +331,8 @@ main() {
 
     # SHOW GRANTS for each user, then append ';'
     if ! run_mysql -h "$HOST" -P "$PORT" -u "$USER" -p"$PASS" -N -B \
-         -e "SHOW GRANTS FOR ${USER_IDENT}" >"$TMPGRANTS" 2>>"$LOG"; then
-      log_warn "Failed to get grants for ${USER_IDENT}. See '${LOG}' for details."
+         -e "SHOW GRANTS FOR ${USER_IDENT}" >"$TMPGRANTS"; then
+      log_warn "Failed to get grants for ${USER_IDENT} (see MySQL error above)."
       echo >>"$USERDUMP"
       continue
     fi
@@ -320,14 +351,6 @@ main() {
   rm -f "$USERLIST" "$TMPGRANTS"
 
   log_ok "Users and grants saved to: ${USERDUMP}"
-
-  if [[ -f "$LOG" && ! -s "$LOG" ]]; then
-    rm -f "$LOG"
-  fi
-
-  if [[ -f "$LOG" ]]; then
-    log_warn "Some errors/warnings were recorded in: ${LOG}"
-  fi
 }
 
 main "$@"
