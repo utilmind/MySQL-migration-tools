@@ -213,9 +213,9 @@ It safely performs:
 - `ANALYZE TABLE` on **InnoDB** tables  
 - Automatically skips unsupported engines  
 - Never modifies table data or structure  
-- Excludes backup tables matching `*_backup_*`. (Because developers often duplicate existing table to the `tablename_backup_YYYY-MM-DD`
-when doing important structural changes or data fixes, to quickly roll back everything if something goes wrong, but `*_backup_*` are
-really not needed in the dump.)
+- Excludes backup tables matching `*_backup_*`.<br />
+(Because developers often duplicate existing table to the `tablename_backup_YYYY-MM-DD` when doing important structural changes
+or data fixes, to quickly roll back everything if something goes wrong, but `*_backup_*` are really not needed in the dump.)
 
 This tool is ideal for scheduled maintenance (cron) or manual performance checks.
 
