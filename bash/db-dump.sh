@@ -480,8 +480,8 @@ fi
 # Check if RAR available
 if command -v rar >/dev/null 2>&1; then
     # Use RAR with rotation
-    archiveFile="${targetFilename%.sql}.rar"
-    archivePrev="${targetFilename%.sql}.previous.rar"
+    archiveFile="${targetFilename}.rar"
+    archivePrev="${targetFilename}.previous.rar"
 
     if [ -f "$archiveFile" ]; then
         log_info "Rotating to '$archivePrev' ..."
@@ -497,8 +497,8 @@ else
     # Fallback: first try gzip, if no gzip either — leave just regular SQL dump.
     if command -v gzip >/dev/null 2>&1; then
         # plain gzip with rotation (btw no TAR needed, since this is single SQL file)
-        archiveFile="${targetFilename%.sql}.gz"
-        archivePrev="${targetFilename%.sql}.previous.gz"
+        archiveFile="${targetFilename}.gz"
+        archivePrev="${targetFilename}.previous.gz"
 
         if [ -f "$archiveFile" ]; then
             log_info "Rotating to '$archivePrev' ..."
