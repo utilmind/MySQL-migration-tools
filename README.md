@@ -239,9 +239,7 @@ Then:
 - Only these tables are inspected  
 - Their engines are detected via `INFORMATION_SCHEMA`
 
----
-
-### 2) Prefix-based mode (automatic)
+#### 2) Prefix-based mode (automatic)
 
 If the credentials file defines:
 
@@ -256,8 +254,6 @@ Backup tables are ALWAYS excluded:
 ```
 *_backup_*
 ```
-
----
 
 #### 3) Full-database mode (default)
 
