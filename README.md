@@ -205,7 +205,7 @@ or:
 
 ### 🧹 Stand-alone Table Optimization (`optimize-tables.sh`)
 
-The script [`optimize-tables.sh`](optimize-tables.sh) can be used **independently**, without running a full dump.
+The script [`optimize-tables.sh`](bash/optimize-tables.sh) can be used **independently**, without running a full dump.
 
 It safely performs:
 
