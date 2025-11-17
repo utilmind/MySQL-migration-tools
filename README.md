@@ -217,7 +217,8 @@ It safely performs:
 (Because developers often duplicate existing production table to the `tablename_backup_YYYY-MM-DD` when doing important structural
 changes or data fixes, to quickly roll back everything if something goes wrong, but `*_backup_*` are really not needed in the dump.)
 
-This tool is ideal for scheduled maintenance (cron) or manual performance checks.
+This tool is ideal for scheduled maintenance (cron) or manual performance checks. [`db-dump.sh`](bash/db-dump.sh) executing
+optimization before dump. Dumps are faster after table optimization. This is especially noticeable on MyISAM tables with many changes.
 
 ### ✔ How it selects tables
 
