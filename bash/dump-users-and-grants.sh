@@ -63,8 +63,9 @@ TMPGRANTS=""
 # Skip system users by default
 INCLUDE_SYSTEM_USERS=0
 
-# Optional user name prefix filter (User LIKE 'PREFIX%')
-USER_PREFIX=""
+# Optional user name prefixes filter (User LIKE 'PREFIX%')
+# Can hold multiple prefixes: ("mydata" "anotherdata" ...)
+USER_PREFIXES=()
 
 # System users list (SQL fragment inside NOT IN (...))
 SYSTEM_USERS_LIST="'root','mysql.sys','mysql.session','mysql.infoschema',"\
@@ -88,8 +89,12 @@ Usage:
 Options:
   --config NAME        Use .NAME.credentials.sh instead of .credentials.sh
                        for connection settings (dbHost, dbPort, dbUser, dbPass).
-  --user-prefix PREFIX Export only users whose *name* starts with PREFIX
-                       (User LIKE 'PREFIX%'; host is not filtered).
+  --user-prefix LIST   Export only users whose *name* starts with one of
+                       the prefixes in LIST.
+                       LIST can be:
+                         - single prefix: "mydata"
+                         - several prefixes: "mydata anotherdata"
+                       (User LIKE 'mydata%' OR User LIKE 'anotherdata%'; host is not filtered).
   --include-system-users
                        Also export system / internal users
                        (root, mysql.sys, mariadb.sys, etc.).
@@ -128,7 +133,22 @@ parse_args() {
       --config)
         dbConfigName="$2"; shift 2 ;;
       --user-prefix)
-        USER_PREFIX="$2"; shift 2 ;;
+        # allow multiple prefixes in one argument: "--user-prefix 'silk posh'"
+        if [[ -n "$2" ]]; then
+          local raw="$2"
+          shift 2
+          # split by whitespace into array
+          local parts=()
+          # shellcheck disable=SC2206
+          parts=($raw)
+          for p in "${parts[@]}"; do
+            USER_PREFIXES+=("$p")
+          done
+        else
+          log_err "--user-prefix requires an argument"
+          exit 1
+        fi
+        ;;
       --include-system-users)
         INCLUDE_SYSTEM_USERS=1; shift ;;
       -h|--help)
@@ -273,9 +293,15 @@ main() {
   # Clean previous files
   rm -f "$USERLIST" "$TMPGRANTS" "$USERDUMP"
 
+  # For logging: join prefixes into string
+  local prefix_log="<none>"
+  if [[ ${#USER_PREFIXES[@]} -gt 0 ]]; then
+    prefix_log="${USER_PREFIXES[*]}"
+  fi
+
   log_info "Exporting users and grants from ${HOST}:${PORT} using ${SQLCLI}..."
   log_info "Output file: ${USERDUMP}"
-  log_info "User prefix filter: ${USER_PREFIX:-<none>}"
+  log_info "User prefix filter(s): ${prefix_log}"
   log_info "Connecting as: ${USER}"
 
   # Build SQL to get user list
@@ -287,11 +313,22 @@ main() {
     sql_userlist+=" AND User NOT IN (${SYSTEM_USERS_LIST})"
   fi
 
-  # Apply prefix filter if provided: User LIKE 'prefix%'
-  if [[ -n "$USER_PREFIX" ]]; then
-    local escaped_prefix
-    escaped_prefix=$(printf "%s" "$USER_PREFIX" | sed "s/'/''/g")
-    sql_userlist+=" AND User LIKE '${escaped_prefix}%'"
+  # Apply prefixes filter if provided: (User LIKE 'p1%' OR User LIKE 'p2%' ...)
+  if [[ ${#USER_PREFIXES[@]} -gt 0 ]]; then
+    sql_userlist+=" AND ("
+    local first=1
+    local p escaped_prefix
+    for p in "${USER_PREFIXES[@]}"; do
+      [[ -z "$p" ]] && continue
+      escaped_prefix=$(printf "%s" "$p" | sed "s/'/''/g")
+      if [[ $first -eq 1 ]]; then
+        sql_userlist+="User LIKE '${escaped_prefix}%'"
+        first=0
+      else
+        sql_userlist+=" OR User LIKE '${escaped_prefix}%'"
+      fi
+    done
+    sql_userlist+=")"
   fi
 
   sql_userlist+=" ORDER BY User, Host;"
@@ -304,8 +341,8 @@ main() {
   fi
 
   if ! [[ -s "$USERLIST" ]]; then
-    if [[ -n "$USER_PREFIX" ]]; then
-      log_warn "User list is empty (no users matching prefix '${USER_PREFIX}'). Nothing to export."
+    if [[ ${#USER_PREFIXES[@]} -gt 0 ]]; then
+      log_warn "User list is empty (no users matching prefixes: ${prefix_log}). Nothing to export."
     else
       log_warn "User list is empty. Nothing to export."
     fi
