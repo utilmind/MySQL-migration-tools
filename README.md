@@ -91,9 +91,9 @@ MySQL-migration-tools/
 
 # ⚙️ Usage
 
-# 🪟 Windows
+## 🪟 Windows
 
-## Database Dumps
+### Database Dumps
 
 Open `db-dump.bat` in a text editor and review the CONFIG block.
 
@@ -106,7 +106,7 @@ db-dump.bat db1 db2 db3          → dump only selected DBs
 db-dump.bat --ONE db1 db2 db3    → one combined SQL for selected DBs
 ```
 
-### 💡 Notes
+#### 💡 Notes
 * You can also dump remote hosts, specifying the hostname/IP and in the `%HOST%`/`%PORT%` variables.
 * Users and grants are dumped automatically and usually prepended to the overall dump (if not skipped).
 But you can also run `dump-users-and-grants.bat` separately to get the list of all non-system users and
@@ -114,9 +114,9 @@ their privileges/grants into SQL file, ready for import into another MySQL/Maria
 
 ---
 
-# 🐧 Linux
+## 🐧 Linux
 
-## Database Dumps
+### Database Dumps
 
 Single file (recommended):
 
@@ -144,7 +144,7 @@ View help:
 
 ---
 
-## Exporting Users & Grants (Linux)
+### Exporting Users & Grants (Linux)
 
 The script `dump-users-and-grants.sh` exports MySQL/MariaDB users and their grants into a standalone SQL file.
 
