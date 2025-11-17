@@ -152,7 +152,7 @@ View help and the list of available options:
 ℹ️ MySQL (not MariaDB) can display a warning like `mysqldump: [Warning] Using a password on the command line interface can be insecure.`
 Yes, it's definitely is, but ignore this warning. This is simply the password entered or specified in the configuration,
 which is substituted when calling mysqldump as a command-line parameter.<br />
-⭐ If `--skip-optimize` option is not used [`db-dump.sh`](db-dump.sh) usually optimizing all MyISAM tables (analyzing InnoDB tables) before each dump. But you can optimize/analyze your tables separately with [`optimize-tables.sh`](optimize-tables.sh) utility.
+⭐ If `--skip-optimize` option is not used [`db-dump.sh`](db-dump.sh) usually optimizing all MyISAM tables and analyzing InnoDB tables before each dump. But you can optimize/analyze your tables separately with [`optimize-tables.sh`](optimize-tables.sh) utility.
 
 ---
 
