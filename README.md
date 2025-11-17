@@ -119,28 +119,28 @@ their privileges/grants into SQL file, ready for import into another MySQL/Maria
 
 ### Database Dumps
 
-Single file (recommended).<br />
+**Single file (recommended).**<br />
 Configuration taken from default [`.credentials.sh`](bash/.sample.credentials.sh):
 
 ```bash
 ./db-dump.sh /backups/all-dbs.sql
 ```
 
-Using configuration profile.<br />
+**Using configuration profile.**<br />
 This one takes credentials from [`.production.credentials.sh`](bash/.sample.credentials.sh):
 
 ```bash
 ./db-dump.sh /backups/all-dbs.sql production
 ```
 
-Date-stamped filename.<br />
+**Date-stamped filename.**<br />
 Dumps all into a single SQL file. Current date in **YYYYMMDD** format substituted instead of **@** character in the file name.
 
 ```bash
 ./db-dump.sh "/backups/db-@.sql" production
 ```
 
-View help:
+**View help and the list of available options:**
 
 ```bash
 ./db-dump.sh --help
