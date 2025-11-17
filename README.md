@@ -270,5 +270,4 @@ metadata extracted from information_schema.TABLES.
 ## 🧰 To-Do
 
 - Selective user/grant extraction. (When dumping selected databases, include to dump only the relevant users/grants.)
-- SQL dialect converter (MySQL → PostgreSQL, Oracle, etc.) Yes, this is complicated for stored functions and tiggers,
-but still possible, maybe using AI.
+- SQL dialect converter (MySQL → PostgreSQL, Oracle, etc.) Yes, this is can be complicated for automatic conversions in stored procedures and tiggers, but still possible. Maybe using AI.
