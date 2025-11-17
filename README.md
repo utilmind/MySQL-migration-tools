@@ -93,7 +93,7 @@ MySQL-migration-tools/
 
 ## 🪟 Windows
 
-### Database Dumps
+### Database Dumps with Users
 
 Open `db-dump.bat` in a text editor and review the CONFIG block.
 
