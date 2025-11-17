@@ -479,33 +479,37 @@ if command -v rar >/dev/null 2>&1; then
     archivePrev="${targetFilename%.sql}.previous.rar"
 
     if [ -f "$archiveFile" ]; then
-        log_info "Previous RAR archive found. Rotating to '$archivePrev' ..."
+        log_info "Rotating to '$archivePrev' ..."
         mv -f "$archiveFile" "$archivePrev"
     fi
 
-    log_info "RAR found. Archiving dump as '$archiveFile' ..."
+    log_info "Archiving dump as '$archiveFile' ..."
     # -m5 = best compression, -ep = do not store paths
     rar a -m5 -ep "$archiveFile" "$targetFilename"
     # If you want to delete the original SQL dump after archiving, uncomment the next line:
     # rm -f "$targetFilename"
 
 else
-    # Fallback to plain gzip with rotation (btw no TAR needed for a single SQL file)
-    archiveFile="${targetFilename%.sql}.gz"
-    archivePrev="${targetFilename%.sql}.previous.gz"
+    # Fallback: first try gzip, if no gzip either â€” leave just regular SQL dump.
+    if command -v gzip >/dev/null 2>&1; then
+        # plain gzip with rotation (btw no TAR needed, since this is single SQL file)
+        archiveFile="${targetFilename%.sql}.gz"
+        archivePrev="${targetFilename%.sql}.previous.gz"
 
-    if [ -f "$archiveFile" ]; then
-        log_info "Previous gzip archive found. Rotating to '$archivePrev' ..."
-        mv -f "$archiveFile" "$archivePrev"
-    fi
+        if [ -f "$archiveFile" ]; then
+            log_info "Rotating to '$archivePrev' ..."
+            mv -f "$archiveFile" "$archivePrev"
+        fi
 
-    log_info "RAR not found. Using gzip, archiving dump as '$archiveFile' ..."
-
-    # compression level 9 (best) – good for automated backups
-    # Use -c to keep original .sql file and write compressed data to archiveFile
-    if ! gzip -9 -c "$targetFilename" > "$archiveFile"; then
-        log_error "gzip failed while creating '$archiveFile'."
-        exit 1
+        # compression level 9 (best)
+        if ! gzip -9 -c "$targetFilename" > "$archiveFile"; then
+            log_warn "gzip compression failed; leaving original dump '$targetFilename' uncompressed."
+            rm -f "$archiveFile" 2>/dev/null || true
+            archiveFile="$targetFilename"
+        fi
+    else
+        log_warn "'rar' and 'gzip' are not available. Dump will remain uncompressed."
+        archiveFile="$targetFilename"
     fi
 fi
 
