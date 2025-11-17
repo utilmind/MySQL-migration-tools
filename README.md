@@ -150,7 +150,7 @@ View help and the list of available options:
 ./db-dump.sh --help
 ```
 
-⚠️ Always make sure that device has enough space for dumps.<br />
+⚠️ Always make sure that device has enough space for dumps. Remember that post-processing of dump requires the same amount of disk space as the dump itself.<br />
 ℹ️ MySQL (not MariaDB) can display a warning like `mysqldump: [Warning] Using a password on the command line interface can be insecure.`
 Yes, it's definitely is, but ignore this warning. This is simply the password entered or specified in the configuration,
 which is substituted when calling mysqldump as a command-line parameter.<br />
