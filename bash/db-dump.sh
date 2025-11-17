@@ -472,9 +472,7 @@ fi
 
 # -------------- ARCHIVE MAINTENANCE ---------------
 
-archiveFile=""
-archivePrev=""
-
+# Check if RAR available
 if command -v rar >/dev/null 2>&1; then
     # Use RAR with rotation
     archiveFile="${targetFilename%.sql}.rar"
@@ -492,20 +490,23 @@ if command -v rar >/dev/null 2>&1; then
     # rm -f "$targetFilename"
 
 else
-    # Fallback to tar+gzip with rotation
-    archiveFile="${targetFilename%.sql}.tar.gz"
-    archivePrev="${targetFilename%.sql}.previous.tar.gz"
-    tarTmp="${targetFilename%.sql}.tar"
+    # Fallback to plain gzip with rotation (btw no TAR needed for a single SQL file)
+    archiveFile="${targetFilename%.sql}.gz"
+    archivePrev="${targetFilename%.sql}.previous.gz"
 
     if [ -f "$archiveFile" ]; then
-        log_info "Previous tar.gz archive found. Rotating to '$archivePrev' ..."
+        log_info "Previous gzip archive found. Rotating to '$archivePrev' ..."
         mv -f "$archiveFile" "$archivePrev"
     fi
 
-    log_info "RAR not found. Using tar+gzip, archiving dump as '$archiveFile' ..."
-    tar -cf "$tarTmp" "$targetFilename"
+    log_info "RAR not found. Using gzip, archiving dump as '$archiveFile' ..."
+
     # compression level 9 (best) – good for automated backups
-    gzip -9 -f "$tarTmp"
+    # Use -c to keep original .sql file and write compressed data to archiveFile
+    if ! gzip -9 -c "$targetFilename" > "$archiveFile"; then
+        log_error "gzip failed while creating '$archiveFile'."
+        exit 1
+    fi
 fi
 
 log_ok "Dump finished and archived as '$archiveFile'."
