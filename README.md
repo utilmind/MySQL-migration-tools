@@ -120,14 +120,14 @@ their privileges/grants into SQL file, ready for import into another MySQL/Maria
 ### Database Dumps
 
 Single file (recommended).<br />
-Configuration taken from default [`bash/.sample.credentials.sh`]`.credentials.sh`:
+Configuration taken from default [`.credentials.sh`](bash/.sample.credentials.sh):
 
 ```bash
 ./db-dump.sh /backups/all-dbs.sql
 ```
 
 Using configuration profile.<br />
-This one takes credentials from [`bash/.sample.credentials.sh`]`.production.credentials.sh`:
+This one takes credentials from [`.production.credentials.sh`](bash/.sample.credentials.sh):
 
 ```bash
 ./db-dump.sh /backups/all-dbs.sql production
@@ -212,7 +212,7 @@ modern MySQL/MariaDB setups, it’s usually unnecessary — and can even cause s
 For example, if a trigger body contains a developer comment `/* ... */` inside
 a versioned block, it may conflict with the outer wrapper and break the SQL import.
 
-The [`bash/strip-mysql-compatibility-comments.py`](strip-mysql-compatibility-comments.py)
+The [`strip-mysql-compatibility-comments.py`](bash/strip-mysql-compatibility-comments.py)
 **removes these compatibility wrappers** while preserving the real developers comments
 in the function/trigger bodies.
 
@@ -225,10 +225,10 @@ metadata extracted from information_schema.TABLES.
 
 # 🧠 Migration Advice
 
-1. **Never modify system DBs manually (`mysql`, `sys`, …)**  
-2. **Don’t copy raw InnoDB files**  
-3. **Always dump with full charset/collation info**  
-4. **Log imports during debugging:**
+1. Never modify system DBs manually (`mysql`, `sys`, …)  
+2. Don’t copy raw InnoDB files  
+3. Always dump with full charset/collation info  
+4. Log imports during debugging:
 
 ```bash
 mysql < dump.sql > errors.log 2>&1
