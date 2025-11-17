@@ -140,6 +140,8 @@ Dumps all into a single SQL file. Current date in **YYYYMMDD** format substitute
 ./db-dump.sh "/backups/db-@.sql" production
 ```
 
+💡 Use [Garbage Collector](https://github.com/utilmind/garbage-collector) tool to regularly remove outdated dumps (created by schedule/crontab) after a certain number of days.
+
 View help and the list of available options:
 
 ```bash
