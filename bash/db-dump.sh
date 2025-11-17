@@ -91,7 +91,10 @@ COMMON_OPTS+=( --set-gtid-purged=OFF )
 # If dumping from MySQL 8.x to older MySQL/MariaDB where COLUMN_STATISTICS is absent, OR...
 # If you're dumping MariaDB server using mysqldump executable from MySQL, suppress the column stats.
 # (Because MariaDB doesn't have the column statistics and this option is enabled by default in MySQL 8+.)
-COMMON_OPTS+=( --column-statistics=0 )
+# So... first check whether this option is supported by `mysqldump` and if yes, trying to disable column stats.
+if mysqldump --help 2>&1 | grep -q -- '--column-statistics'; then
+  COMMON_OPTS+=( --column-statistics=0 )
+fi
 
 # ===== Optional, uncomment/remove as needed =====
 
@@ -487,9 +490,8 @@ if command -v rar >/dev/null 2>&1; then
 
     log_info "Archiving dump as '$archiveFile' ..."
     # -m5 = best compression, -ep = do not store paths
-    rar a -m5 -ep "$archiveFile" "$targetFilename"
-    # If you want to delete the original SQL dump after archiving, uncomment the next line:
-    # rm -f "$targetFilename"
+    # -df = delete SQL file. Remove that option if you want to keep SQL file after archivation.
+    rar a -m5 -ep -df "$archiveFile" "$targetFilename"
 
 else
     # Fallback: first try gzip, if no gzip either — leave just regular SQL dump.
@@ -508,6 +510,9 @@ else
             log_warn "gzip compression failed; leaving original dump '$targetFilename' uncompressed."
             rm -f "$archiveFile" 2>/dev/null || true
             archiveFile="$targetFilename"
+        else
+            # Compression successful. Delete source .sql
+            rm -f "$targetFilename"
         fi
     else
         log_warn "'rar' and 'gzip' are not available. Dump will remain uncompressed."
