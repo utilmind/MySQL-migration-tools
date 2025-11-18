@@ -18,7 +18,7 @@ They also perfect for quick deployments of an empty database structure with all 
 
 However, the Windows and Linux versions of the `db-dump` script are not equal.
 * the 🪟**Windows** version is designed for complete migration of all databases from one PC to another (make exact copy of all local databases recreating them from scratch), while the purpose of
-* the 🐧**Linux** version is to create dumps of *one* specific database using the separate configs for each separate database and the task scheduler/crontab for automatic dumps. Dumps produced by Linux script don't recreate the entire database, only importing objects (updated tables, functions, triggers etc) available in the dump.
+* the 🐧**Linux** version is to create dumps of *one* specific database using the separate configs for each separate database and the task scheduler/crontab for automatic dumps. Dumps produced by Linux script doesn't recreate the entire database, only importing objects (updated tables, functions, triggers etc) available in the dump.
 
 ---
 
@@ -99,7 +99,7 @@ MySQL-migration-tools/
 
 The main difference between the Windows and Linux versions of `db-dump` script is that
 * the 🪟**Windows** version is designed for complete migration of all databases from one PC to another (make exact copy of all local databases recreating them from scratch), while the purpose of
-* the 🐧**Linux** version is to create dumps of *one* specific database using the separate configs for each separate database and the task scheduler/crontab for automatic dumps. Dumps produced by Linux script don't recreate the entire database, only importing objects (updated tables, functions, triggers etc) available in the dump.
+* the 🐧**Linux** version is to create dumps of *one* specific database using the separate configs for each separate database and the task scheduler/crontab for automatic dumps. Dumps produced by Linux script doesn't recreate the entire database, only importing objects (updated tables, functions, triggers etc) available in the dump.
 
 ## 🪟 Windows
 
