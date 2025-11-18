@@ -230,17 +230,20 @@ if [ -n "$tablesListRaw" ]; then
                 ;;
         esac
     done < <(
+        # BASE TABLE's only, no VIEW's.
         mysql "${mysqlConnOpts[@]}" -N \
             -e "SELECT TABLE_NAME, ENGINE
                 FROM INFORMATION_SCHEMA.TABLES
                 WHERE TABLE_SCHEMA = '$dbName'
+                  AND TABLE_TYPE = 'BASE TABLE'
                   AND TABLE_NAME IN (${tablesInClause})
                 ORDER BY TABLE_NAME;"
     )
 
 else
     # ---------- PREFIX-BASED OR FULL-DB MODE ----------
-    where_clause="TABLE_SCHEMA = '$dbName'"
+    # BASE TABLE's only, no VIEW's.
+    where_clause="TABLE_SCHEMA = '$dbName' AND TABLE_TYPE = 'BASE TABLE'"
 
     # dbTablePrefix may be undefined or an empty array.
     if [ -n "${dbTablePrefix+x}" ] && [ "${#dbTablePrefix[@]}" -gt 0 ]; then
