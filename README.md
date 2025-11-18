@@ -370,3 +370,4 @@ metadata extracted from information_schema.TABLES.
 
 - Selective user/grant extraction. (When dumping selected databases, include to dump only the relevant users/grants.)
 - SQL dialect converter (MySQL → PostgreSQL, Oracle, etc.) Yes, this is can be complicated for automatic conversions in stored procedures and tiggers, but still possible. Maybe using AI.
+- (Maybe) add simple garbage collector to remove outdated dumps in Linux version.
