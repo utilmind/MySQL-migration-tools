@@ -19,6 +19,9 @@ REM ======================================================================
 REM ================== CONFIG ==================
 REM Log file name
 set "LOGFILE=_errors-import.log"
+set "USER=root"
+REM Password: put real password here, or leave EMPTY to be prompted. Do not expose your password in public!!
+set "PASS="
 REM ============== END OF CONFIG ==================
 REM Use UTF-8 encoding for output, if needed
 chcp 65001 >nul
@@ -44,7 +47,7 @@ if not exist "%FILE%" (
 REM Remove old log if exists. (To Recycle Bin.)
 if exist "%LOGFILE%" del "%LOGFILE%"
 
-echo Importing "%FILE%" into MySQL...
+echo Importing "%FILE%" as %USER%...
 
 REM Run MySQL client:
 REM   -u root -p        -> ask for password
@@ -52,7 +55,8 @@ REM   --verbose         -> show what is being executed (some progress). It puts 
 REM   --force           -> continue import even if SQL errors occur. You can review all errors together in the log.
 REM   < "%FILE%"        -> read SQL commands from dump file
 REM   2> "%LOGFILE%"    -> send ONLY errors (stderr) to _errors.log
-mysql -u root -p --verbose --force -e "source %FILE%" 2> "%LOGFILE%"
+mysql -u %USER% -p %PASS% --verbose --force -e "source %FILE%" 2> "%LOGFILE%"
+REM mysql -u %USER% -p %PASS% -e "source %FILE%"
 
 REM Save MySQL process exit code (connection / fatal errors)
 set "MYSQL_ERRORLEVEL=%ERRORLEVEL%"
