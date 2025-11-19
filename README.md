@@ -348,11 +348,11 @@ SET time_zone = 'UTC';
 SET time_zone = 'Europe/Berlin';
 ```
 
-Named time zones (e.g. `'UTC'`, `'Europe/Kiev'`) are only recognized if the server has its **time zone tables** populated.
+Named time zones (e.g. `'UTC'`, 'America/Los_Angeles', `'Europe/Kiev'`) are only recognized if the server has its **time zone tables** populated.
 If the tables are missing, the server will produce errors like:
 
 ```
-ERROR 1298 (HY000): Unknown or incorrect time zone: 'America/Los_Angeles'
+ERROR 1298 (HY000): Unknown or incorrect time zone: 'Europe/Kiev'
 ```
 
 Our post-processing script automatically normalizes the dump to use numeric offsets instead of `UTC`.
