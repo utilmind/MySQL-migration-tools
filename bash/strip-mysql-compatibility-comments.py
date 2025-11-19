@@ -215,7 +215,7 @@ DROP_VIEW_RE = re.compile(
 # Normalize "SET time_zone = 'UTC';" to "SET time_zone = '+00:00';"
 # Handles arbitrary spaces and one or more semicolons at the end of the line.
 TIME_ZONE_UTC_RE = re.compile(
-    r"(?im)^(SET\s+time_zone\s*=\s*)'UTC'(\s*;+\s*)$"
+    r"(?im)^(\s*SET\s+time_zone\s*=\s*)'UTC'(\s*;+\s*)$"
 )
 
 
