@@ -212,6 +212,23 @@ DROP_VIEW_RE = re.compile(
     re.IGNORECASE
 )
 
+# Normalize "SET time_zone = 'UTC';" to "SET time_zone = '+00:00';"
+# Handles arbitrary spaces and one or more semicolons at the end of the line.
+TIME_ZONE_UTC_RE = re.compile(
+    r"(?im)^(SET\s+time_zone\s*=\s*)'UTC'(\s*;+\s*)$"
+)
+
+
+def replace_utc_time_zone(text: str) -> str:
+    """
+    Replace any standalone "SET time_zone = 'UTC';" statement (with arbitrary
+    spacing and one or more semicolons) with "SET time_zone = '+00:00';".
+
+    This is done in a multiline-safe manner and should not affect data payloads,
+    because the pattern is anchored to the beginning of the line.
+    """
+    return TIME_ZONE_UTC_RE.sub(r"\1'+00:00'\2", text)
+
 
 def enhance_create_table(
     text: str,
@@ -446,10 +463,12 @@ def process_dump_stream(
     }
 
     def write_out(chunk: str) -> None:
-        """Write chunk to fout, optionally enhancing CREATE TABLE."""
+        """Write chunk to fout, optionally enhancing CREATE TABLE and normalizing time_zone."""
         if not chunk:
             return
         enhanced = enhance_create_table(chunk, create_state, table_meta, default_schema)
+        # Normalize SET time_zone = 'UTC' to SET time_zone = '+00:00'
+        enhanced = replace_utc_time_zone(enhanced)
         fout.write(enhanced)
 
     with open(in_path, "r", encoding="utf-8", errors="replace") as fin, \

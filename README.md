@@ -339,6 +339,96 @@ metadata extracted from information_schema.TABLES.
 
 ---
 
+## Time zone issues
+
+MySQL and MariaDB dumps sometimes contain statements like:
+
+```sql
+SET time_zone = 'UTC';
+SET time_zone = 'Europe/Berlin';
+```
+
+Named time zones (e.g. `'UTC'`, `'Europe/Kiev'`) are only recognized if the server has its **time zone tables** populated.
+If the tables are missing, the server will produce errors like:
+
+```
+ERROR 1298 (HY000): Unknown or incorrect time zone: 'America/Los_Angeles'
+```
+
+Our post-processing script automatically normalizes the dump to use numeric offsets instead of `UTC`.
+It automatically replaces all
+
+```sql
+SET time_zone = 'UTC';
+```
+
+to
+
+```sql
+SET time_zone = '+00:00';
+```
+
+Because numeric offsets always work and **do not require** time zone tables.
+However we can’t automatically fix other time zones due to summer and winter time shifts and various local political decisions.
+So, **if you want to keep using named time zones, you must load the system time zone database into MySQL or MariaDB**.
+
+---
+
+## Windows users (MariaDB / MySQL)
+
+MariaDB for Windows **does not include** time zone tables.
+To enable named time zones, download a prebuilt SQL file from the official MariaDB tzdata repository and import it manually.
+
+### Official download location:
+
+**https://downloads.mariadb.org/rest-api/mariadb/tzdata/**
+
+Example (2024a release):
+
+- POSIX version (recommended):  
+  **https://downloads.mariadb.org/rest-api/mariadb/tzdata/2024a/posix/timezone_posix.sql**
+- Full version:  
+  **https://downloads.mariadb.org/rest-api/mariadb/tzdata/2024a/full/timezone_full.sql**
+
+Import the file:
+
+```bash
+mysql -u root -p mysql < timezone_posix.sql
+```
+
+After importing, named time zones such as:
+
+```sql
+SET time_zone = 'UTC';
+SET time_zone = 'America/New_York';
+```
+
+will work correctly on Windows.
+
+---
+
+## Linux / Unix users
+
+On Linux/Unix, time zone files are usually available at:
+
+```
+/usr/share/zoneinfo
+```
+
+MariaDB/MySQL provide utilities that convert this directory into SQL:
+
+```bash
+# MySQL or older MariaDB:
+mysql_tzinfo_to_sql /usr/share/zoneinfo | mysql -u root -p mysql
+
+# MariaDB specific (if available):
+mariadb-tzinfo-to-sql /usr/share/zoneinfo | mysql -u root -p mysql
+```
+
+Once imported, the server will fully support all named time zones.
+
+---
+
 ## 🧠 Important Things to Remember When Migrating MySQL Databases
 
 1. **Never modify system tables or users**
