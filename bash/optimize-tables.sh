@@ -164,6 +164,10 @@ fi
 #   dbHost, dbPort, dbName, dbUser, optional dbPass, optional dbTablePrefix (array)
 . "$credentialsFile"
 
+# Apply defaults for host and port if not provided in credentials
+dbHost="${dbHost:-localhost}"
+dbPort="${dbPort:-3306}"
+
 # If dbName is not defined, try to use configuration name as DB name.
 if [ -z "${dbName:-}" ]; then
     if [ -n "$dbConfigName" ]; then
@@ -172,6 +176,12 @@ if [ -z "${dbName:-}" ]; then
         log_error "'dbName' is not defined in credentials file '$credentialsFile' and no configuration-name argument was provided."
         exit 1
     fi
+fi
+
+# dbUser must be defined in credentials
+if [ -z "${dbUser:-}" ]; then
+    log_error "'dbUser' is not defined in credentials file '$credentialsFile'."
+    exit 1
 fi
 
 # Ask for password if missing

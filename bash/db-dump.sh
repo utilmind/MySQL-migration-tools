@@ -47,6 +47,20 @@ set -euo pipefail
 
 
 # ---------------- BUILD DUMP OPTIONS (COMMON_OPTS) ----------------
+# Detect or declare `mysqldump` binary
+MYSQLDUMP_BIN="${MYSQLDUMP_BIN:-mysqldump}"
+if ! command -v "$MYSQLDUMP_BIN" >/dev/null 2>&1; then
+    log_error "mysqldump not found in PATH."
+    exit 1
+fi
+
+# Read `mysqldump --help` once, to have the list of available options (to check whether specific option is available)
+MYSQLDUMP_HELP="$("$MYSQLDUMP_BIN" --help 2>&1)"
+# Helper: check if mysqldump supports some specific option
+has_mysqldump_opt() {
+    # $1 is something like '--set-gtid-purged' or '--column-statistics'
+    printf '%s\n' "$MYSQLDUMP_HELP" | grep -q -- "$1"
+}
 
 # Dump options common for all databases
 # NOTE: These options affect every dump produced by this script.
@@ -86,13 +100,15 @@ COMMON_OPTS+=( --hex-blob )
 COMMON_OPTS+=( --no-tablespaces )
 
 # Do NOT inject SET @@GLOBAL.GTID_PURGED into the dump (safer for imports into existing replicas).
-COMMON_OPTS+=( --set-gtid-purged=OFF )
+if has_mysqldump_opt '--set-gtid-purged'; then
+    COMMON_OPTS+=( --set-gtid-purged=OFF )
+fi
 
 # If dumping from MySQL 8.x to older MySQL/MariaDB where COLUMN_STATISTICS is absent, OR...
 # If you're dumping MariaDB server using mysqldump executable from MySQL, suppress the column stats.
 # (Because MariaDB doesn't have the column statistics and this option is enabled by default in MySQL 8+.)
-# So... first check whether this option is supported by `mysqldump` and if yes, trying to disable column stats.
-if mysqldump --help 2>&1 | grep -q -- '--column-statistics'; then
+# So... first check whether this option is supported by `mysqldump` and if yes, try to disable column stats.
+if has_mysqldump_opt '--column-statistics'; then
   COMMON_OPTS+=( --column-statistics=0 )
 fi
 
@@ -100,7 +116,9 @@ fi
 
 # Preserve server local time zone behavior (usually NOT recommended). By default, mysqldump sets UTC.
 # Only use if your target server lacks time zone tables or you have a strong reason to avoid UTC.
-# COMMON_OPTS+=( --skip-tz-utc )
+# if has_mysqldump_opt '--column-statistics'; then
+#   COMMON_OPTS+=( --skip-tz-utc )
+# fi
 
 # For repeatable imports and better compression, order rows by PRIMARY KEY (if present):
 # COMMON_OPTS+=( --order-by-primary )
@@ -295,6 +313,10 @@ fi
 #   dbHost, dbPort, dbName, dbUser, optional dbPass, optional dbTablePrefix
 . "$credentialsFile"
 
+# Apply defaults for host and port if not provided in credentials
+dbHost="${dbHost:-localhost}"
+dbPort="${dbPort:-3306}"
+
 # If dbName is not defined in credentials, we can fall back to dbConfigName (if set).
 if [ -z "${dbName:-}" ]; then
     if [ -n "$dbConfigName" ]; then
@@ -303,6 +325,12 @@ if [ -z "${dbName:-}" ]; then
         log_error "'dbName' is not defined in credentials file '$credentialsFile' and no configuration-name argument was provided."
         exit 1
     fi
+fi
+
+# dbUser must be defined in credentials
+if [ -z "${dbUser:-}" ]; then
+    log_error "'dbUser' is not defined in credentials file '$credentialsFile'."
+    exit 1
 fi
 
 # Ask for password if it is not defined or empty
@@ -445,7 +473,7 @@ if [ ! -s "$allTablesFilename" ]; then
 fi
 
 log_info "Running mysqldump for database '$dbName' into '$targetFilename' ..."
-mysqldump \
+"$MYSQLDUMP_BIN" \
     "${mysqlConnOpts[@]}" \
     "${COMMON_OPTS[@]}" \
     "$dbName" \
