@@ -108,7 +108,7 @@ def report_progress(processed_bytes: int, total_size: int, last: float) -> float
         percent = (processed_bytes / total_size) * 100
 
     if percent - last >= 1.0 or percent == 100.0:
-        sys.stderr.write(f"\r{percent:5.1f}%...")
+        sys.stderr.write("\r{0:5.1f}%...".format(percent))
         sys.stderr.flush()
         return percent
 
@@ -144,12 +144,12 @@ def load_table_metadata(tsv_path: str) -> Tuple[Dict[str, Dict[str, Any]], Optio
 
     if not os.path.isfile(tsv_path):
         sys.stderr.write(
-            f"\n[WARN] Table metadata TSV not found: {tsv_path}. "
-            f"CREATE TABLE enhancement will be skipped.\n"
+            ("\n[WARN] Table metadata TSV not found: {0}. "
+             "CREATE TABLE enhancement will be skipped.\n").format(tsv_path)
         )
         return meta, None
 
-    sys.stderr.write(f"\nLoading table metadata from '{tsv_path}'...\n")
+    sys.stderr.write("\nLoading table metadata from '{0}'...\n".format(tsv_path))
 
     with open(tsv_path, "r", encoding="utf-8", errors="replace") as f:
         for line in f:
@@ -163,7 +163,7 @@ def load_table_metadata(tsv_path: str) -> Tuple[Dict[str, Dict[str, Any]], Optio
             schema, table, engine, row_format, table_collation = parts[:5]
 
             schemas.add(schema)
-            key = f"{schema}.{table}"
+            key = "{0}.{1}".format(schema, table)
 
             # Normalize engine
             eng = (engine or "").strip()
@@ -192,10 +192,10 @@ def load_table_metadata(tsv_path: str) -> Tuple[Dict[str, Dict[str, Any]], Optio
     if len(schemas) == 1:
         default_schema = next(iter(schemas))
 
-    sys.stderr.write(
-        f"Loaded metadata for {len(meta)} tables"
-        f"{(f' in schema {default_schema!r}') if default_schema else ''}.\n"
-    )
+    msg = "Loaded metadata for {0} tables".format(len(meta))
+    if default_schema:
+        msg += " in schema {0!r}".format(default_schema)
+    sys.stderr.write(msg + "\n")
     return meta, default_schema
 
 
@@ -306,12 +306,12 @@ def enhance_create_table(
                 # Resolve metadata key (schema.table)
                 schema_to_use = current_schema or default_schema
                 if schema_to_use:
-                    key = f"{schema_to_use}.{current_table}"
+                    key = "{0}.{1}".format(schema_to_use, current_table)
                 else:
                     # No schema info: try by table name uniqueness
                     matches = [
                         k for k in table_meta.keys()
-                        if k.endswith(f".{current_table}")
+                        if k.endswith(".{0}".format(current_table))
                     ]
                     key = matches[0] if len(matches) == 1 else None
 
@@ -325,10 +325,10 @@ def enhance_create_table(
                     # If metadata looks broken — do not inject NULLs; warn and pass through
                     if not engine or not table_collation:
                         sys.stderr.write(
-                            f"\n[WARN] Missing metadata for "
-                            f"{key or current_table}: ENGINE={engine!r}, "
-                            f"COLLATION={table_collation!r}. "
-                            f"CREATE TABLE kept as-is.\n"
+                            "\n[WARN] Missing metadata for {0}: ENGINE={1!r}, "
+                            "COLLATION={2!r}. CREATE TABLE kept as-is.\n".format(
+                                key or current_table, engine, table_collation
+                            )
                         )
                         append_chunk(full)
                     else:
@@ -360,17 +360,17 @@ def enhance_create_table(
                             additions = []
 
                             if not has_engine:
-                                additions.append(f" ENGINE={engine}")
+                                additions.append(" ENGINE={0}".format(engine))
                             if row_format and not has_rowfmt:
-                                additions.append(f" ROW_FORMAT={row_format}")
+                                additions.append(" ROW_FORMAT={0}".format(row_format))
                             if not has_def_charset:
-                                additions.append(f" DEFAULT CHARSET={charset}")
+                                additions.append(" DEFAULT CHARSET={0}".format(charset))
                                 if not has_collate:
-                                    additions.append(f" COLLATE={table_collation}")
+                                    additions.append(" COLLATE={0}".format(table_collation))
                             else:
                                 # DEFAULT CHARSET present; add COLLATE if missing
                                 if not has_collate:
-                                    additions.append(f" COLLATE={table_collation}")
+                                    additions.append(" COLLATE={0}".format(table_collation))
 
                             # Detect newline at the end
                             nl = ""
@@ -394,7 +394,7 @@ def enhance_create_table(
                             else:
                                 new_rest_core = rest_core + "".join(additions)
 
-                            new_last_line = f"{prefix}){new_rest_core}{nl}"
+                            new_last_line = "{0}){1}{2}".format(prefix, new_rest_core, nl)
                             lines[-1] = new_last_line
                             full = "".join(lines)
                             append_chunk(full)
@@ -449,8 +449,8 @@ def process_dump_stream(
     last_percent_reported = -1.0
 
     sys.stderr.write(
-        f"Removing MySQL compatibility comments from '{in_path}' "
-        f"({total_size:,} bytes)\nSaving clean dump to '{out_path}'...\n"
+        "Removing MySQL compatibility comments from '{0}' ({1:,} bytes)\n"
+        "Saving clean dump to '{2}'...\n".format(in_path, total_size, out_path)
     )
 
     # State for CREATE TABLE enhancement
@@ -481,7 +481,7 @@ def process_dump_stream(
 
         if db_name:
             # If a database name is provided, also select it explicitly.
-            fout.write(f"\nUSE `{db_name}`;\n\n")
+            fout.write("\nUSE `{0}`;\n\n".format(db_name))
         else:
             # Just add a blank line separator if no db_name is given.
             fout.write("\n")
@@ -623,7 +623,7 @@ def main() -> None:
     db_name = args.db_name
 
     if not os.path.isfile(in_path):
-        print(f"Input file not found: {in_path}", file=sys.stderr)
+        print("Input file not found: {0}".format(in_path), file=sys.stderr)
         sys.exit(1)
 
     table_meta: Dict[str, Dict[str, Any]] = {}
