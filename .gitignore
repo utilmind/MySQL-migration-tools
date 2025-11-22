@@ -4,6 +4,8 @@
 *.tsv
 *.exe
 *.dll
+*.zip
+*.rar
 *.txt
 *.log
 /ps1

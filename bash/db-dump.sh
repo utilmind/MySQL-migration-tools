@@ -400,12 +400,13 @@ if [ -n "$tablesListRaw" ]; then
         fi
     done
 
-    # ---- GENERATE TABLE METADATA TSV (EXPLICIT TABLES) ----
+    # ---- GENERATE TABLE METADATA TSV (EXPLICIT TABLES, exclude views) ----
     log_info "Dumping table metadata for selected tables to '$tablesMetaFilename' ..."
     if ! mysql "${mysqlConnOpts[@]}" -N \
         -e "SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, ROW_FORMAT, TABLE_COLLATION
             FROM INFORMATION_SCHEMA.TABLES
             WHERE TABLE_SCHEMA = '$dbName'
+              AND TABLE_TYPE = 'BASE TABLE'
               AND TABLE_NAME IN (${tablesListInClause})
             ORDER BY TABLE_SCHEMA, TABLE_NAME;" > "$tablesMetaFilename"
     then
@@ -416,10 +417,8 @@ if [ -n "$tablesListRaw" ]; then
     printf "%s\n" "${explicitTables[@]}" > "$allTablesFilename"
 
 else
-    # ---- DETERMINE FILTER: PREFIXES OR ALL TABLES ----
-
-    where_meta="TABLE_SCHEMA = '$dbName'"
-    where_list="table_schema='$dbName'"
+    # ---- DETERMINE FILTER: PREFIXES OR ALL TABLES (except VIEW's, only BASE TABLE's) ----
+    where_clause="TABLE_SCHEMA = '$dbName'"
 
     if [ -n "${dbTablePrefix+x}" ]; then
         like_clause=""
@@ -432,9 +431,7 @@ else
                 like_clause="$like_clause OR (TABLE_NAME LIKE '${esc}%')"
             fi
         done
-        where_meta="$where_meta AND ($like_clause)"
-        # For the export query we can safely reuse the same expression (case-insensitive)
-        where_list="$where_list AND ($like_clause)"
+        where_clause="$where_clause AND ($like_clause)"
         # log_info "dbTablePrefix is defined; exporting only tables matching configured prefixes."
         log_info "Exporting only tables matching configured prefixes: ${dbTablePrefix[@]}."
     else
@@ -442,16 +439,16 @@ else
         log_info "Exporting ALL tables from database '$dbName' (excluding *_backup_*)."
     fi
 
-    # Exclude backup tables in any case
-    where_meta="$where_meta AND TABLE_NAME NOT LIKE '%_backup_%'"
-    where_list="$where_list AND table_name NOT LIKE '%_backup_%'"
+    # Exclude backup tables in either case
+    where_clause="$where_clause AND TABLE_NAME NOT LIKE '%_backup_%'"
 
     # ---- GENERATE TABLE METADATA TSV ----
     log_info "Dumping table metadata to '$tablesMetaFilename' ..."
     if ! mysql "${mysqlConnOpts[@]}" -N \
         -e "SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, ROW_FORMAT, TABLE_COLLATION
             FROM INFORMATION_SCHEMA.TABLES
-            WHERE ${where_meta}
+            WHERE ${where_clause}
+              AND TABLE_TYPE = 'BASE TABLE'
             ORDER BY TABLE_SCHEMA, TABLE_NAME;" > "$tablesMetaFilename"
     then
         log_warn "Failed to dump table metadata. TSV will be missing, CREATE TABLE enhancement may be skipped."
@@ -461,7 +458,7 @@ else
     mysql "${mysqlConnOpts[@]}" -N "$dbName" \
         -e "SELECT table_name
             FROM INFORMATION_SCHEMA.TABLES
-            WHERE ${where_list}
+            WHERE ${where_clause}
             ORDER BY table_name" > "$allTablesFilename"
 fi
 
