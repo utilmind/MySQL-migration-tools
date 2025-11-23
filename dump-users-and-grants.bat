@@ -50,13 +50,6 @@ set "DB_PORT=3306"
 set "DB_USER=root"
 REM Password: put real password here, or leave empty to be prompted
 set "DB_PASS="
-REM =====================================================================
-REM (Don't use exclamation sign in file names, to avoid !VAR! issues.)
-set "USERDUMP=%OUTDIR%\_users_and_grants.sql"
-REM Log and temporary files
-set "LOG=%OUTDIR%\_users_errors.log"
-set "USERLIST=%TEMP%\__user-list.txt"
-set "TMPGRANTS=%TEMP%\__grants-tmp.txt"
 
 REM --------- Override config from arguments if provided ----------
 REM Arg1: SQLBIN, Arg2: DB_HOST, Arg3: DB_PORT, Arg4: DB_USER, Arg5: DB_PASS, Arg6: OUTDIR, Arg7: USERDUMP
@@ -69,6 +62,16 @@ if not "%~5"=="" set "DB_PASS=%~5"
 if not "%~6"=="" set "OUTDIR=%~6"
 if not "%~7"=="" set "USERDUMP=%~7"
 REM ----------------------------------------------------------------
+
+
+REM Set target file names, after %OUTDIR% is defined.
+REM (Don't use exclamation sign in file names, to avoid !VAR! issues.)
+set "USERDUMP=%OUTDIR%\_users_and_grants.sql"
+REM Log and temporary files
+set "LOG=%OUTDIR%\__users_errors.log"
+set "USERLIST=%TEMP%\__user-list.txt"
+set "TMPGRANTS=%TEMP%\__grants-tmp.txt"
+
 
 REM Add trailing slash (\) to the end of %SQLBIN%, if it's not empty.
 if defined SQLBIN (

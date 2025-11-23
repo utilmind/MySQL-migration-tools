@@ -172,10 +172,10 @@ REM Filename used if we dump ALL databases
 set "OUTFILE=%OUTDIR%\_db.sql"
 set "ALLDATA=%OUTDIR%\_db_data.sql"
 set "USERDUMP=%OUTDIR%\_users_and_grants.sql"
-set "TABLE_SCHEMAS=%OUTDIR%\_tables-meta.tsv"
-set "LOG=%OUTDIR%\_errors-dump.log"
-REM Temporary file for the list of databases
-set "DBLIST=%OUTDIR%\__db-list.txt"
+set "LOG=%OUTDIR%\__errors-dump.log"
+REM Temporary files
+set "TABLE_SCHEMAS=%TEMP%\__tables-meta.tsv"
+set "DBLIST=%TEMP%\__db-list.txt"
 set "DBNAMES="
 
 REM Use UTF-8 encoding for output, if needed
@@ -370,6 +370,8 @@ goto :after_dumps
 
 REM ================== AFTER DUMPS ==================
 :after_dumps
+del "%TABLE_SCHEMAS%" 2>nul
+
 echo.
 echo === Database dumps are in: %OUTDIR%
 echo.
