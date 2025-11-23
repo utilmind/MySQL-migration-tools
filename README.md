@@ -162,8 +162,8 @@ If the filename contains an `@` symbol, it is replaced with the current date (**
 ```bash
 ./db-dump.sh "/backups/db-@.sql" production
 ```
-* In this case dump is saved to /backups/db-***YYYYMMDD***.sql.<br />
-💡 BTW, use [Garbage Collector](https://github.com/utilmind/garbage-collector) tool to regularly remove outdated dumps (created by schedule/crontab) after a certain number of days.
+💡 In this case dump is saved to /backups/db-***YYYYMMDD***.sql.<br />
+♻️ BTW, use [Garbage Collector](https://github.com/utilmind/garbage-collector) tool to regularly remove outdated dumps (created by schedule/crontab) after a certain number of days.
 
 
 ### **Dump only specific tables**
