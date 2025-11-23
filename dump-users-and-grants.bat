@@ -45,11 +45,11 @@ set "SQLDUMP=mysqldump.exe"
 REM Output folder for users_and_grants.sql
 set "OUTDIR=D:\_db-dumps"
 REM Connection params
-set "HOST=localhost"
-set "PORT=3306"
-set "USER=root"
+set "DB_HOST=localhost"
+set "DB_PORT=3306"
+set "DB_USER=root"
 REM Password: put real password here, or leave empty to be prompted
-set "PASS="
+set "DB_PASS="
 REM =====================================================================
 REM (Don't use exclamation sign in file names, to avoid !VAR! issues.)
 set "USERDUMP=%OUTDIR%\_users_and_grants.sql"
@@ -59,13 +59,13 @@ set "USERLIST=%OUTDIR%\__user-list.txt"
 set "TMPGRANTS=%OUTDIR%\__grants_tmp.txt"
 
 REM --------- Override config from arguments if provided ----------
-REM Arg1: SQLBIN, Arg2: HOST, Arg3: PORT, Arg4: USER, Arg5: PASS, Arg6: OUTDIR, Arg7: USERDUMP
+REM Arg1: SQLBIN, Arg2: DB_HOST, Arg3: DB_PORT, Arg4: DB_USER, Arg5: DB_PASS, Arg6: OUTDIR, Arg7: USERDUMP
 
 if not "%~1"=="" set "SQLBIN=%~1"
-if not "%~2"=="" set "HOST=%~2"
-if not "%~3"=="" set "PORT=%~3"
-if not "%~4"=="" set "USER=%~4"
-if not "%~5"=="" set "PASS=%~5"
+if not "%~2"=="" set "DB_HOST=%~2"
+if not "%~3"=="" set "DB_PORT=%~3"
+if not "%~4"=="" set "DB_USER=%~4"
+if not "%~5"=="" set "DB_PASS=%~5"
 if not "%~6"=="" set "OUTDIR=%~6"
 if not "%~7"=="" set "USERDUMP=%~7"
 REM ----------------------------------------------------------------
@@ -83,10 +83,10 @@ if defined SQLBIN (
   )
 )
 
-REM Ask for password only if PASS is empty after overrides
-if "%PASS%"=="" (
-  echo Enter password for %USER%@%HOST% ^(INPUT WILL BE VISIBLE^)
-  set /p "PASS=> "
+REM Ask for password only if DB_PASS is empty after overrides
+if "%DB_PASS%"=="" (
+  echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^)
+  set /p "DB_PASS=> "
   echo.
 )
 
@@ -107,7 +107,7 @@ chcp 65001 >nul
 echo === Exporting users and grants to "%USERDUMP%" ===
 
 REM Get list of users@hosts; skip system accounts like root, mariadb.sys, mysql.sys, mysql.session
-"%SQLBIN%%SQLCLI%" -h %HOST% -P %PORT% -u %USER% -p%PASS% -N -B ^
+"%SQLBIN%%SQLCLI%" -h %DB_HOST% -P %DB_PORT% -u %DB_USER% -p%DB_PASS% -N -B ^
   -e "SELECT CONCAT('''',User,'''@''',Host,'''') FROM mysql.user WHERE User<>'' AND User NOT IN ('root','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','mariadb.session','debian-sys-maint','healthchecker','rdsadmin')" > "%USERLIST%"
 
 if errorlevel 1 (
@@ -116,7 +116,7 @@ if errorlevel 1 (
 )
 
 REM Optional header
-echo -- Users and grants exported from %HOST%:%PORT% on %DATE% %TIME%> "%USERDUMP%"
+echo -- Users and grants exported from %DB_HOST%:%DB_PORT% on %DATE% %TIME%> "%USERDUMP%"
 echo SET sql_log_bin=0;>> "%USERDUMP%"
 echo.>> "%USERDUMP%"
 
@@ -125,7 +125,7 @@ for /f "usebackq delims=" %%U in ("%USERLIST%") do (
   echo CREATE USER IF NOT EXISTS %%U;>>"%USERDUMP%"
 
   REM Write SHOW GRANTS output to a temporary file. (AK: we could output them, but should add ';' after GRANT string...)
-  "%SQLBIN%%SQLCLI%" -h "%HOST%" -P %PORT% -u "%USER%" -p%PASS% -N -B -e "SHOW GRANTS FOR %%U" >"%TMPGRANTS%" 2>>"%LOG%"
+  "%SQLBIN%%SQLCLI%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% -N -B -e "SHOW GRANTS FOR %%U" >"%TMPGRANTS%" 2>>"%LOG%"
 
   REM Read each GRANT line and append a semicolon
   for /f "usebackq delims=" %%G in ("%TMPGRANTS%") do (
