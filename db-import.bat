@@ -47,7 +47,7 @@ if not exist "%FILE%" (
 REM Remove old log if exists. (To Recycle Bin.)
 if exist "%LOGFILE%" del "%LOGFILE%"
 
-echo Importing "%FILE%" as %USER%...
+echo Importing "%FILE%" as '%USER%'...
 
 REM Run MySQL client:
 REM   -u root -p        -> ask for password
@@ -55,8 +55,9 @@ REM   --verbose         -> show what is being executed (some progress). It puts 
 REM   --force           -> continue import even if SQL errors occur. You can review all errors together in the log.
 REM   < "%FILE%"        -> read SQL commands from dump file
 REM   2> "%LOGFILE%"    -> send ONLY errors (stderr) to _errors.log
-mysql -u %USER% -p %PASS% --verbose --force -e "source %FILE%" 2> "%LOGFILE%"
-REM mysql -u %USER% -p %PASS% -e "source %FILE%"
+mysql -u %USER% -p %PASS% --force -e "source %FILE%" 2> "%LOGFILE%"
+REM mysql -u %USER% -p %PASS% --verbose --force -e "source %FILE%" 2> "%LOGFILE%"
+REM mysql -u %USER% -p %PASS% --force -e "source %FILE%"
 
 REM Save MySQL process exit code (connection / fatal errors)
 set "MYSQL_ERRORLEVEL=%ERRORLEVEL%"
