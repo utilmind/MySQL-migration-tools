@@ -43,7 +43,7 @@ REM Client executable name: mysql.exe or mariadb.exe / mysqldump.exe or mariadb-
 set "SQLCLI=mysql.exe"
 set "SQLDUMP=mysqldump.exe"
 REM Output folder for users_and_grants.sql
-set "OUTDIR=D:\_db-dumps"
+set "OUTDIR=.\_db-dumps"
 REM Connection params
 set "DB_HOST=localhost"
 set "DB_PORT=3306"
@@ -55,8 +55,8 @@ REM (Don't use exclamation sign in file names, to avoid !VAR! issues.)
 set "USERDUMP=%OUTDIR%\_users_and_grants.sql"
 REM Log and temporary files
 set "LOG=%OUTDIR%\_users_errors.log"
-set "USERLIST=%OUTDIR%\__user-list.txt"
-set "TMPGRANTS=%OUTDIR%\__grants_tmp.txt"
+set "USERLIST=%TEMP%\__user-list.txt"
+set "TMPGRANTS=%TEMP%\__grants-tmp.txt"
 
 REM --------- Override config from arguments if provided ----------
 REM Arg1: SQLBIN, Arg2: DB_HOST, Arg3: DB_PORT, Arg4: DB_USER, Arg5: DB_PASS, Arg6: OUTDIR, Arg7: USERDUMP
@@ -106,10 +106,8 @@ chcp 65001 >nul
 
 echo === Exporting users and grants to "%USERDUMP%" ===
 
-REM Get list of users@hosts; skip system accounts like root, mariadb.sys, mysql.sys, mysql.session
-"%SQLBIN%%SQLCLI%" -h %DB_HOST% -P %DB_PORT% -u %DB_USER% -p%DB_PASS% -N -B ^
-  -e "SELECT CONCAT('''',User,'''@''',Host,'''') FROM mysql.user WHERE User<>'' AND User NOT IN ('root','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','mariadb.session','debian-sys-maint','healthchecker','rdsadmin')" > "%USERLIST%"
-
+"%SQLBIN%%SQLCLI%" -h "%DB_HOST%" -P "%DB_PORT%" -u "%DB_USER%" -p%DB_PASS% -N -B ^
+  -e "SELECT CONCAT(QUOTE(User),'@',QUOTE(Host)) FROM mysql.user WHERE User<>'' AND User NOT IN ('root','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','mariadb.session','debian-sys-maint','healthchecker','rdsadmin')" >"%USERLIST%" 2>>"%LOG%"
 if errorlevel 1 (
   echo ERROR: Could not retrieve user list. See "%LOG%" for details.
   goto :end
@@ -125,7 +123,7 @@ for /f "usebackq delims=" %%U in ("%USERLIST%") do (
   echo CREATE USER IF NOT EXISTS %%U;>>"%USERDUMP%"
 
   REM Write SHOW GRANTS output to a temporary file. (AK: we could output them, but should add ';' after GRANT string...)
-  "%SQLBIN%%SQLCLI%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% -N -B -e "SHOW GRANTS FOR %%U" >"%TMPGRANTS%" 2>>"%LOG%"
+  "%SQLBIN%%SQLCLI%" -h "%DB_HOST%" -P "%DB_PORT%" -u "%DB_USER%" -p%DB_PASS% -N -B -e "SHOW GRANTS FOR %%U" >"%TMPGRANTS%" 2>>"%LOG%"
 
   REM Read each GRANT line and append a semicolon
   for /f "usebackq delims=" %%G in ("%TMPGRANTS%") do (
