@@ -203,11 +203,11 @@ Arguments:
         placed in the same directory as this script.
         If not provided, then ".credentials.sh" will be used.
 
-    explicit tables list (Optional, third parameter)
-        Quoted space-separated list of tables to export.
+    explicit tables list (Optional, after the 'configuration-name')
+        Space-separated list of tables to export.
         If provided, dbTablePrefix is ignored and tables are taken exactly from this list.
         Example:
-            $scriptName dump.sql my-config "table1 table2 table_user stats"
+            $scriptName dump.sql my-config table1 table2 table_user stats
 
 Behavior:
     - If explicit table list is provided (3rd parameter), only these tables are exported.
@@ -234,7 +234,7 @@ Behavior:
 EOF
 }
 
-# ---------------- PARAMETER PARSING ----------------
+# --------- PARAMETER PARSING (--options can be used in any position) -----------
 
 # No parameters at all -> show help
 if [ $# -eq 0 ]; then
@@ -245,8 +245,9 @@ fi
 run_optimize=1
 structure_only=0   # when 1, dump only schema (no table rows, no DROP statements)
 
-# Handle optional flags (-h / --help / --skip-optimize / --no-data)
-while [[ "${1-}" == -* ]] ; do
+positional=()  # used to collect positional options (w/o --)
+
+while [ $# -gt 0 ]; do
     case "$1" in
         -?|-h|-help|--help)
             print_help
@@ -261,30 +262,49 @@ while [[ "${1-}" == -* ]] ; do
             shift
             ;;
         --)
+            # All after are stricly positional even if started with '-'
             shift
-            break
+            while [ $# -gt 0 ]; do
+                positional+=("$1")
+                shift
+            done
             ;;
-        *)
+        -*)
             log_error "Invalid parameter: '$1'"
             exit 1
+            ;;
+        *)
+            positional+=("$1")
+            shift
             ;;
     esac
 done
 
-# Now we expect:
-#   1) dump-name.sql (required)
-#   2) configuration-name (optional)
-#   3) explicit tables list (optional, quoted)
-if [ $# -lt 1 ]; then
+# Now expect in positional:
+#   [0] dump-name.sql (required)
+#   [1] configuration-name (optional)
+#   [2...] explicit tables list (optional, one or multiple tables)
+if [ ${#positional[@]} -lt 1 ]; then
     scriptName=$(basename "$0")
     log_error "Missing required parameters."
-    echo "Usage: $scriptName [--skip-optimize] dump-name.sql [configuration-name] [\"table1 table2 ...\"]"
+    echo "Usage: $scriptName [--no-data] [--skip-optimize] dump-name.sql [configuration-name] [table1 [table2 ...]]"
     exit 1
 fi
 
-dumpTemplate="$1"
-dbConfigName="${2:-}"       # may be empty
-tablesListRaw="${3:-}"      # may be empty (quoted space-separated list of tables)
+dumpTemplate="${positional[0]}"
+dbConfigName="${positional[1]:-}"   # may be empty
+
+# Собираем все оставшиеся позиционные аргументы в одну строку таблиц
+tablesListRaw=""
+if [ ${#positional[@]} -gt 2 ]; then
+    for ((i = 2; i < ${#positional[@]}; i++)); do
+        if [ -z "$tablesListRaw" ]; then
+            tablesListRaw="${positional[i]}"
+        else
+            tablesListRaw="$tablesListRaw ${positional[i]}"
+        fi
+    done
+fi
 
 
 # ---------------- BASIC PATHS / FILENAMES ----------------
