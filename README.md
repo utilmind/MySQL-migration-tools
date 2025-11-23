@@ -127,7 +127,111 @@ their privileges/grants into SQL file, ready for import into another MySQL/Maria
 
 ## 🐧 Linux
 
-### Database Dumps (of single database)
+### Database Dumps (single database only)
+
+The Linux version of `db-dump.sh` creates a reliable dump of **one specific database**, using the connection settings stored in
+`.credentials.sh` or `.NAME.credentials.sh` (when a configuration profile is provided).
+
+It can dump:
+
+- the **entire database** (structure + data),
+- the database **structure only** (with `--no-data` option),
+- a **selected set of tables** (with or w/o data, if `--no-data` is used),
+- optionally optimized/analyzed tables before dumping, if `--skip-optimize` is not used.
+
+
+### **Dump full database (default)**
+
+Using default credentials from [`.credentials.sh`](bash/.sample.credentials.sh) prepared in the same directory with [`db-dump.sh`](bash/db-dump.sh):
+
+```bash
+./db-dump.sh /backups/all-tables.sql
+```
+
+Using a named configuration profile ([`.production.credentials.sh`](bash/.sample.credentials.sh)):
+
+```bash
+./db-dump.sh /backups/all-tables.sql production
+```
+
+
+### **Date-stamped filename**
+
+If the filename contains an `@` symbol, it is replaced with the current date (YYYYMMDD):
+
+```bash
+./db-dump.sh "/backups/db-@.sql" production
+```
+
+
+### **Dump only specific tables**
+
+You can dump only selected tables by listing them **after** the filename and configuration:
+
+```bash
+./db-dump.sh /backups/db-@.sql production users orders logs
+or tables as quoted list
+./db-dump.sh /backups/db-@.sql production "users orders logs"
+```
+
+
+### **Help**
+
+Show all options:
+
+```bash
+./db-dump.sh --help
+```
+
+
+### **Structure-only dump (`--no-data`)**
+
+The `--no-data` option produces an SQL file containing **only the database schema**, without any table rows.
+
+It additionally removes all:
+
+- `DROP TABLE`
+- `DROP VIEW`
+- `DROP TRIGGER`
+- `DROP FUNCTION` / `DROP PROCEDURE`
+- versioned DROP-comments (`/*!50001 DROP ... */`)
+
+This makes the output ideal for:
+
+- schema analysis (including with AI tools),
+- sharing database structure without data,
+- preparing migration DDL,
+- creating diffable schema snapshots.
+
+Example:
+
+```bash
+./db-dump.sh --no-data /backups/mydb-@.sql production
+```
+
+Specific tables and `--no-data` can be combined:
+
+```bash
+./db-dump.sh --no-data /backups/schema-@.sql production users orders
+```
+
+
+### Notes & Warnings
+
+⚠️ Ensure your disk has enough free space.
+Post-processing requires **the same amount of space** as the dump itself.
+You should have at least **2×** the dump size available.
+
+ℹ️ MySQL may output:
+
+```
+mysqldump: [Warning] Using a password on the command line interface can be insecure.
+```
+
+This is normal and can be ignored — the script just passes the password to `mysqldump` as a command-line parameter.
+
+⭐ Unless `--skip-optimize` is used, `db-dump.sh` automatically optimizes MyISAM tables and analyzes InnoDB tables before dumping.
+You can also run optimization manually using [`optimize-tables.sh`](optimize-tables.sh).
 
 **Single file (recommended).**<br />
 Configuration taken from default [`.credentials.sh`](bash/.sample.credentials.sh):
