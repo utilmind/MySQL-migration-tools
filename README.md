@@ -135,7 +135,7 @@ The Linux version of `db-dump.sh` creates a reliable dump of **one specific data
 It can dump:
 
 - the **entire database** (structure + data),
-- the database **structure only** (with `--no-data` option),
+- the database **structure only** (with `--no-data` option, e.g. to share/analyze structure w/o exposing data),
 - a **selected set of tables** (with or w/o data, if `--no-data` is used),
 - optionally optimized/analyzed tables before dumping, if `--skip-optimize` is not used.
 
@@ -232,42 +232,7 @@ mysqldump: [Warning] Using a password on the command line interface can be insec
 This is normal and can be ignored — the script just passes the password to `mysqldump` as a command-line parameter.
 
 ⭐ Unless `--skip-optimize` is used, `db-dump.sh` automatically optimizes MyISAM tables and analyzes InnoDB tables before dumping.
-You can also run optimization manually using [`optimize-tables.sh`](optimize-tables.sh).
-
-**Single file (recommended).**<br />
-Configuration taken from default [`.credentials.sh`](bash/.sample.credentials.sh):
-
-```bash
-./db-dump.sh /backups/all-tables.sql
-```
-
-**Using configuration profile.**<br />
-This one takes credentials from [`.production.credentials.sh`](bash/.sample.credentials.sh):
-
-```bash
-./db-dump.sh /backups/all-tables.sql production
-```
-
-**Date-stamped filename.**<br />
-Dumps all into a single SQL file. Current date in **YYYYMMDD** format substituted instead of **@** character in the file name.
-
-```bash
-./db-dump.sh "/backups/db-@.sql" production
-```
-
-💡 Use [Garbage Collector](https://github.com/utilmind/garbage-collector) tool to regularly remove outdated dumps (created by schedule/crontab) after a certain number of days.
-
-View help and the list of available options:
-
-```bash
-./db-dump.sh --help
-```
-
-⚠️ Always make sure that device has enough space for dumps. Remember that post-processing of dump requires the same amount of disk space as the dump itself! Therefore, free up a size twice larger than needed for the dump.<br />
-ℹ️ MySQL (not MariaDB) can display a warning like `mysqldump: [Warning] Using a password on the command line interface can be insecure.`
-Yes, it's definitely is, but ignore this warning. This is simply the password entered or specified in the configuration,
-which is substituted when calling mysqldump as a command-line parameter.<br />
-⭐ If `--skip-optimize` option is not used [`db-dump.sh`](db-dump.sh) usually optimizing all MyISAM tables and analyzing InnoDB tables before each dump. But you can optimize/analyze your tables separately with [`optimize-tables.sh`](optimize-tables.sh) utility.
+You can also run optimization manually using stand-alone [`optimize-tables.sh`](optimize-tables.sh) tool.
 
 ---
 
