@@ -44,14 +44,14 @@ REM set "SQLDUMP=mariadb-dump.exe"
 set "SQLDUMP=mysqldump.exe"
 
 REM Output folder for dumps (will be created if missing)
-set "OUTDIR=D:\_db-dumps"
+set "OUTDIR=.\_db-dumps"
 
-REM Connection params (leave HOST/PORT default if local)
-set "HOST=localhost"
-set "PORT=3306"
-set "USER=root"
+REM Connection params (leave DB_HOST/DB_PORT default if local)
+set "DB_HOST=localhost"
+set "DB_PORT=3306"
+set "DB_USER=root"
 REM Password: put real password here, or leave EMPTY to be prompted. Do not expose your password in public!!
-set "PASS="
+set "DB_PASS="
 
 REM Get all databases into single SQL-dump: 1 = yes, 0 = no. This option can be overridden (turned on) by `--ONE` parameter
 set "ONE_MODE=0"
@@ -74,6 +74,23 @@ set "COMPATIBILITY_COMMENTS_APPENDIX=.clean"
 REM Replace 'python' to 'python3' or 'py', depending under which name the Python interpreter is registered in your system.
 set "COMPATIBILITY_COMMENTS_REMOVER=python ./bash/strip-mysql-compatibility-comments.py"
 
+
+REM ==================== READ mysqldump HELP ====================
+REM Make sure that mysqldump exists in PATH
+"%SQLDUMP%" --version >nul 2>&1
+if errorlevel 1 (
+    echo [FAIL] mysqldump not found in PATH or not executable.
+    goto :end
+)
+
+REM Store mysqldump --help output in a temporary file for reuse
+set "MYSQLDUMP_HELP_FILE=%OUTDIR%\_mysqldump_help_%RANDOM%.tmp"
+"%SQLDUMP%" --help >"%MYSQLDUMP_HELP_FILE%" 2>&1
+if errorlevel 1 (
+    echo [FAIL] Failed to execute "%SQLDUMP%" --help".
+    del "%MYSQLDUMP_HELP_FILE%" >nul 2>&1
+    goto :end
+)
 REM Dump options common for all databases
 REM NOTE: These options affect every dump produced by this script.
 REM       Keep them conservative for maximum compatibility.
@@ -167,11 +184,11 @@ if defined SQLBIN (
 )
 
 
-REM Ask for password only if PASS is empty
-echo Preparing database dump from %HOST%:%PORT% on behalf of '%USER%'...
-if "%PASS%"=="" (
-  echo Enter password for %USER%@%HOST% ^(INPUT WILL BE VISIBLE^) or press Ctrl+C to terminate.
-  set /p "PASS=> "
+REM Ask for password only if DB_PASS is empty
+echo Preparing database dump from %DB_HOST%:%DB_PORT% on behalf of '%DB_USER%'...
+if "%DB_PASS%"=="" (
+  echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^) or press Ctrl+C to terminate.
+  set /p "DB_PASS=> "
   echo.
 )
 
@@ -202,7 +219,7 @@ REM Optionally export users and grants via the separate script.
 REM Important to prepare it in the beginning, to include to the _all_databases_ export.
 if "%EXPORT_USERS_AND_GRANTS%"=="1" (
   REM === Exporting users and grants using dump-users-and-grants.bat ===
-  @call "%~dp0dump-users-and-grants.bat" "%SQLBIN%" "%HOST%" "%PORT%" "%USER%" "%PASS%" "%OUTDIR%" "%USERDUMP%"
+  @call "%~dp0dump-users-and-grants.bat" "%SQLBIN%" "%DB_HOST%" "%DB_PORT%" "%DB_USER%" "%DB_PASS%" "%OUTDIR%" "%USERDUMP%"
   if not exist "%USERDUMP%" (
     REM echo WARNING: "%USERDUMP%" not found, will create dump with data only, without users/grants.
     goto :end
@@ -215,8 +232,8 @@ del "%LOG%" 2>nul
 REM If we already have the list of databases to dump, then don't retrieve names from server
 if "%DBNAMES%" NEQ "" goto :mode_selection
 
-echo === Getting database list from %HOST%:%PORT% ...
-"%SQLBIN%%SQLCLI%" -h "%HOST%" -P %PORT% -u "%USER%" -p%PASS% -N -B -e "SHOW DATABASES" > "%DBLIST%"
+echo === Getting database list from %DB_HOST%:%DB_PORT% ...
+"%SQLBIN%%SQLCLI%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% -N -B -e "SHOW DATABASES" > "%DBLIST%"
 REM AK: Alternatively we could use `SELECT DISTINCT TABLE_SCHEMA FROM information_schema.TABLES WHERE TABLE_SCHEMA NOT IN ("information_schema", "performance_schema", "mysql", "sys");`,
 REM     this way could exclude system tables immediately, but this doesn't exports *empty* databases (w/o tables yet), which still could be important. So let's keep canonical SHOW DATABASES, then filter it.
 if errorlevel 1 (
@@ -256,7 +273,7 @@ for %%D in (!DBNAMES!) do (
 
 REM === Dump default table schemas, to be able to restore everything exactly as on original server ===
 echo Dumping table metadata to '%TABLE_SCHEMAS%' ...
-"%SQLBIN%%SQLCLI%" -h "%HOST%" -P %PORT% -u "%USER%" -p%PASS% -N -B -e "SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, ROW_FORMAT, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA IN (!DBNAMES_IN!) ORDER BY TABLE_SCHEMA, TABLE_NAME;" > "%TABLE_SCHEMAS%"
+"%SQLBIN%%SQLCLI%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% -N -B -e "SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, ROW_FORMAT, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA IN (!DBNAMES_IN!) ORDER BY TABLE_SCHEMA, TABLE_NAME;" > "%TABLE_SCHEMAS%"
 if errorlevel 1 (
     echo Failed to dump table metadata.
 ) else (
@@ -272,7 +289,7 @@ for %%D in (!DBNAMES!) do (
   set "OUTFILE=%OUTDIR%\!DB!.sql"
   echo.
   echo --- Dumping database: !DB!  ^> "!OUTFILE!"
-  "%SQLBIN%%SQLDUMP%" -h "%HOST%" -P %PORT% -u "%USER%" -p%PASS% --databases "!DB!" %COMMON_OPTS% --result-file="!OUTFILE!"
+  "%SQLBIN%%SQLDUMP%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% --databases "!DB!" %COMMON_OPTS% --result-file="!OUTFILE!"
   if errorlevel 1 (
     echo [%DATE% %TIME%] ERROR dumping !DB! >> "%LOG%"
     echo     ^- See "%LOG%" for details.
@@ -303,7 +320,7 @@ if "%REMOVE_COMPATIBILITY_COMMENTS%"=="1" (
 )
 
 echo Output: "%ALLDATA%"
-"%SQLBIN%%SQLDUMP%" -h %HOST% -P %PORT% -u %USER% -p%PASS% --databases !DBNAMES! %COMMON_OPTS% --result-file="%ALLDATA%"
+"%SQLBIN%%SQLDUMP%" -h %DB_HOST% -P %DB_PORT% -u %DB_USER% -p%DB_PASS% --databases !DBNAMES! %COMMON_OPTS% --result-file="%ALLDATA%"
 
 if errorlevel 1 (
   echo [%DATE% %TIME%] ERROR dumping ALL NON-SYSTEM DATABASES >> "%LOG%"
