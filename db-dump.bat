@@ -84,13 +84,14 @@ if errorlevel 1 (
 )
 
 REM Store mysqldump --help output in a temporary file for reuse
-set "MYSQLDUMP_HELP_FILE=%OUTDIR%\_mysqldump_help_%RANDOM%.tmp"
+set "MYSQLDUMP_HELP_FILE=%TEMP%\mysqldump_help_%RANDOM%.tmp"
 "%SQLDUMP%" --help >"%MYSQLDUMP_HELP_FILE%" 2>&1
 if errorlevel 1 (
-    echo [FAIL] Failed to execute "%SQLDUMP%" --help".
+    echo [FAIL] Failed to execute "%SQLDUMP% --help".
     del "%MYSQLDUMP_HELP_FILE%" >nul 2>&1
     goto :end
 )
+
 REM Dump options common for all databases
 REM NOTE: These options affect every dump produced by this script.
 REM       Keep them conservative for maximum compatibility.
@@ -106,8 +107,8 @@ set "COMMON_OPTS=%COMMON_OPTS% --force"
 REM Use UTF-8 for the client/server connection.
 REM NOTE that MySQL does NOT emit explicit COLLATE clauses in `CREATE TABLE` for columns/tables that use
 REM the database default collation. Such dumps implicitly depend on the original server defaults. If you
-REM import them on a server with different defaults, REM uniqueness and comparison rules may change. The
-REM post-processing step (REMOVE_COMPATIBILITY_COMMENTS=1) REM restores the original charset and collation
+REM import them on a server with different defaults, uniqueness and comparison rules may change. The
+REM post-processing step (REMOVE_COMPATIBILITY_COMMENTS=1) restores the original charset and collation
 REM into each `CREATE TABLE` to prevent this.
 set "COMMON_OPTS=%COMMON_OPTS% --default-character-set=utf8mb4"
 
@@ -123,18 +124,29 @@ REM Avoid embedding tablespace directives in CREATE TABLE.
 set "COMMON_OPTS=%COMMON_OPTS% --no-tablespaces"
 
 REM Do NOT inject SET @@GLOBAL.GTID_PURGED into the dump (safer for imports into existing replicas).
-set "COMMON_OPTS=%COMMON_OPTS% --set-gtid-purged=OFF"
+REM Only enable this option if mysqldump actually supports it (older MySQL/MariaDB may not).
+findstr /C:"--set-gtid-purged" "%MYSQLDUMP_HELP_FILE%" >nul 2>&1
+if not errorlevel 1 (
+    set "COMMON_OPTS=%COMMON_OPTS% --set-gtid-purged=OFF"
+)
 
 REM If dumping from MySQL 8.x to older MySQL/MariaDB where COLUMN_STATISTICS is absent, OR...
 REM If you're dumping MariaDB server using mysqldump executable from MySQL, suppress the column stats.
 REM (Because MariaDB doesn't have the column statistics and this option is enabled by default in MySQL 8+.)
-set "COMMON_OPTS=%COMMON_OPTS% --column-statistics=0"
+findstr /C:"--column-statistics" "%MYSQLDUMP_HELP_FILE%" >nul 2>&1
+if not errorlevel 1 (
+    set "COMMON_OPTS=%COMMON_OPTS% --column-statistics=0"
+)
 
 REM ===== Optional, uncomment as needed =====
 
 REM Preserve server local time zone behavior (usually NOT recommended). By default, mysqldump sets UTC.
 REM Only use if your target server lacks time zone tables or you have a strong reason to avoid UTC.
-REM set "COMMON_OPTS=%COMMON_OPTS% --skip-tz-utc"
+REM Example (also guarded by option detection):
+REM   findstr /C:"--skip-tz-utc" "%MYSQLDUMP_HELP_FILE%" >nul 2>&1
+REM   if not errorlevel 1 (
+REM       set "COMMON_OPTS=%COMMON_OPTS% --skip-tz-utc"
+REM   )
 
 REM For repeatable imports and better compression, order rows by PRIMARY KEY (if present):
 REM set "COMMON_OPTS=%COMMON_OPTS% --order-by-primary"
@@ -149,6 +161,12 @@ REM Use one INSERT per row (easier diff/merge; slower/larger). Default is multi-
 REM set "COMMON_OPTS=%COMMON_OPTS% --skip-extended-insert"
 
 REM ================== END CONFIG ==============
+
+REM Cleanup temporary mysqldump --help file (no longer needed after building COMMON_OPTS)
+if defined MYSQLDUMP_HELP_FILE (
+  if exist "%MYSQLDUMP_HELP_FILE%" del "%MYSQLDUMP_HELP_FILE%" >nul 2>&1
+  set "MYSQLDUMP_HELP_FILE="
+)
 
 REM Filename used if we dump ALL databases
 set "OUTFILE=%OUTDIR%\_db.sql"
