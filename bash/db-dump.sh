@@ -184,6 +184,12 @@ Options:
     --skip-optimize
         Do not run optimize-tables.sh before dumping (skip MyISAM OPTIMIZE / InnoDB ANALYZE).
 
+    --no-data
+        Dump only database structure (no table rows). Additionally, all DROP*
+        statements (DROP TABLE / DROP VIEW / DROP TRIGGER / etc.) will be
+        removed from the final SQL file to make the schema safer for analysis
+        tools and AI without exposing real data.
+
 Arguments:
     dump-name.sql (Required)
         The exported filename can automatically contain current date.
@@ -237,8 +243,9 @@ if [ $# -eq 0 ]; then
 fi
 
 run_optimize=1
+structure_only=0   # when 1, dump only schema (no table rows, no DROP statements)
 
-# Handle optional flags (-h / --help / --skip-optimize)
+# Handle optional flags (-h / --help / --skip-optimize / --no-data)
 while [[ "${1-}" == -* ]] ; do
     case "$1" in
         -?|-h|-help|--help)
@@ -247,6 +254,10 @@ while [[ "${1-}" == -* ]] ; do
             ;;
         --skip-optimize)
             run_optimize=0
+            shift
+            ;;
+        --no-data)
+            structure_only=1
             shift
             ;;
         --)
@@ -346,6 +357,28 @@ mysqlConnOpts=(
     --user="$dbUser"
     --password="$dbPass"
 )
+
+
+# When structure-only dump is requested, adjust mysqldump options:
+#  - --no-data: do not dump table rows
+#  - --skip-add-drop-table: avoid generating DROP TABLE / DROP VIEW statements
+noDropPyOption="";
+if [ "$structure_only" -eq 1 ]; then
+    # This is paranoid mode. All modern MySQL/MariaDB support --no-data option.
+    if has_mysqldump_opt '--no-data'; then
+        COMMON_OPTS+=( --no-data )
+    else
+        log_error "$MYSQLDUMP_BIN does not support --no-data, structure-only dump may contain data rows."
+        exit 1
+    fi
+
+    # Disable DROP TABLE / DROP VIEW statements in output (if supported).
+    if has_mysqldump_opt '--skip-add-drop-table'; then
+        COMMON_OPTS+=( --skip-add-drop-table )
+    fi
+
+    noDropPyOption="--no-drop";
+fi
 
 
 # --------- OPTIONAL TABLE OPTIMIZATION / ANALYZE (if not skipped with --skip-optimize) ---------
@@ -469,7 +502,7 @@ if [ ! -s "$allTablesFilename" ]; then
     log_warn "No tables selected for export. The resulting dump will be empty."
 fi
 
-log_info "Running mysqldump for database '$dbName' into '$targetFilename' ..."
+log_info "Running $MYSQLDUMP_BIN for database '$dbName' into '$targetFilename' ..."
 "$MYSQLDUMP_BIN" \
     "${mysqlConnOpts[@]}" \
     "${COMMON_OPTS[@]}" \
@@ -493,6 +526,7 @@ if [ -f "$postProcessor" ]; then
         log_info "Post-processing dump with Python script: $(basename "$postProcessor")"
         python3 "$postProcessor" \
             --db-name "$dbName" \
+            ${noDropPyOption:+$noDropPyOption} \
             "$targetFilename" \
             "$tmpProcessed" \
             "$tablesMetaFilename"
@@ -536,6 +570,47 @@ if [ "$need_fallback_use_header" -eq 1 ]; then
       cat "$targetFilename"
     } > "$tmpWithUse"
     mv "$tmpWithUse" "$targetFilename"
+
+    # If structure-only dump was requested, strip any remaining DROP statements
+    # from the final SQL. This includes plain "DROP ..." lines and versioned
+    # comments like "/*!50001 DROP ... */".
+    if [ "$structure_only" -eq 1 ]; then
+        log_info "Removing DROP* statements from structure-only dump ..."
+        tmpNoDrop="${targetFilename%.sql}.nodrop.sql"
+
+        # Use awk to remove lines whose first meaningful token is DROP,
+        # including versioned comments which unwrap into DROP lines.
+        awk '
+        {
+            orig = $0
+
+            # Trim leading whitespace
+            line = orig
+            sub(/^[ \t]+/, "", line)
+
+            # Case 1: line starts directly with DROP (DROP TABLE / DROP VIEW / etc.)
+            up = toupper(line)
+            if (substr(up,1,4) == "DROP") {
+                next
+            }
+
+            # Case 2: versioned comments like "/*!50001 DROP VIEW ... */"
+            if (substr(line,1,3) == "/*!") {
+                # Strip "/*!<digits>" prefix
+                gsub(/^\/\*![0-9]+[ \t]*/, "", line)
+                sub(/^[ \t]+/, "", line)
+                up = toupper(line)
+                if (substr(up,1,4) == "DROP") {
+                    next
+                }
+            }
+
+            # Keep everything else
+            print orig
+        }' "$targetFilename" > "$tmpNoDrop"
+
+        mv "$tmpNoDrop" "$targetFilename"
+    fi
 fi
 
 

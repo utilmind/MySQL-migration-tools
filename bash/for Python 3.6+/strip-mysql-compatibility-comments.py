@@ -34,8 +34,10 @@ Optionally provide a database name via the --db-name / --db option.
 In that case the script will prepend the following lines at
 the very top of the output dump:     USE `your_db_name`;
 
+Optionally strip DROP* statements when --no_drop option used.
+
 Usage:
-    python strip-mysql-compatibility-comments.py [--db-name DB_NAME] input.sql output.sql [tables-meta.tsv]
+    python strip-mysql-compatibility-comments.py [--no-drop] [--db-name DB_NAME] input.sql output.sql [tables-meta.tsv]
 """
 
 import os
@@ -211,6 +213,12 @@ DROP_VIEW_RE = re.compile(
     r'^\s*DROP\s+VIEW\s+IF\s+EXISTS\s+`([^`]+)`;',
     re.IGNORECASE
 )
+
+# Generic detection of DROP* statements for optional stripping.
+# Matches lines that begin (ignoring leading whitespace) with DROP ...;
+# and a special case for versioned comments like "/*!50001 DROP ... */".
+DROP_STMT_RE = re.compile(r'^\s*DROP\b', re.IGNORECASE)
+VERSIONED_DROP_STMT_RE = re.compile(r'^\s*/\*![0-9]+\s*DROP\b', re.IGNORECASE)
 
 # Normalize "SET time_zone = 'UTC';" to "SET time_zone = '+00:00';"
 # Handles arbitrary spaces and one or more semicolons at the end of the line.
@@ -427,6 +435,7 @@ def process_dump_stream(
     table_meta: Optional[Dict[str, Dict[str, Any]]] = None,
     default_schema: Optional[str] = None,
     db_name: Optional[str] = None,
+    no_drop: Optional[bool] = False,
 ) -> None:
     """
     Stream-process input dump:
@@ -438,6 +447,7 @@ def process_dump_stream(
     - if version < threshold: unwrap (emit only inner content)
     - else: keep the whole comment as-is
     - optionally enhance CREATE TABLE statements using table_meta
+    - optionally strip DROP* statements when no_drop is True
     - write everything to out_path
     - print progress to stderr
     """
@@ -462,13 +472,34 @@ def process_dump_stream(
         "skip_for_table": set(),
     }
 
-    def write_out(chunk: str) -> None:
-        """Write chunk to fout, optionally enhancing CREATE TABLE and normalizing time_zone."""
+    def write_out(chunk):
+        """Write chunk to fout, optionally enhancing CREATE TABLE,
+        normalizing time_zone and, if requested, stripping DROP* statements."""
         if not chunk:
             return
         enhanced = enhance_create_table(chunk, create_state, table_meta, default_schema)
         # Normalize SET time_zone = 'UTC' to SET time_zone = '+00:00'
         enhanced = replace_utc_time_zone(enhanced)
+
+        if no_drop:
+            # Split into lines (keeping line endings) and drop any line whose first
+            # non-whitespace token is DROP, including versioned comments like
+            # "/*!50001 DROP VIEW ... */".
+            kept_lines = []
+            for line in enhanced.splitlines(True):
+                stripped = line.lstrip()
+                if not stripped:
+                    kept_lines.append(line)
+                    continue
+                if VERSIONED_DROP_STMT_RE.match(stripped):
+                    continue
+                if DROP_STMT_RE.match(stripped):
+                    continue
+                kept_lines.append(line)
+            enhanced = "".join(kept_lines)
+            if not enhanced:
+                return
+
         fout.write(enhanced)
 
     with open(in_path, "r", encoding="utf-8", errors="replace") as fin, \
@@ -598,6 +629,15 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--no-drop",
+        action="store_true",
+        dest="no_drop",
+        help=(
+            "If set, strip any DROP* statements from the output, including "
+            "versioned comments like '/*!50001 DROP ... */'."
+        ),
+    )
+    parser.add_argument(
         "input",
         help="Path to the input SQL dump file.",
     )
@@ -621,6 +661,7 @@ def main() -> None:
     out_path = args.output
     tsv_path = args.tables_meta
     db_name = args.db_name
+    no_drop = bool(args.no_drop)
 
     if not os.path.isfile(in_path):
         print(f"Input file not found: {in_path}", file=sys.stderr)
@@ -639,6 +680,7 @@ def main() -> None:
         table_meta=table_meta,
         default_schema=default_schema,
         db_name=db_name,
+        no_drop=no_drop,
     )
 
 
