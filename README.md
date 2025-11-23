@@ -148,7 +148,7 @@ Using default credentials from [`.credentials.sh`](bash/.sample.credentials.sh) 
 ./db-dump.sh /backups/all-tables.sql
 ```
 
-Using a named configuration profile ([`.production.credentials.sh`](bash/.sample.credentials.sh)):
+Using a named configuration profile (e.g. [`.production.credentials.sh`](bash/.sample.credentials.sh)), that allows to select specific database credentials, if you’re running multiple databases on single environment:
 
 ```bash
 ./db-dump.sh /backups/all-tables.sql production
@@ -157,11 +157,13 @@ Using a named configuration profile ([`.production.credentials.sh`](bash/.sample
 
 ### **Date-stamped filename**
 
-If the filename contains an `@` symbol, it is replaced with the current date (YYYYMMDD):
+If the filename contains an `@` symbol, it is replaced with the current date (**YYYYMMDD**):
 
 ```bash
 ./db-dump.sh "/backups/db-@.sql" production
 ```
+* In this case dump is saved to /backups/db-***YYYYMMDD***.sql.<br />
+💡 BTW, use [Garbage Collector](https://github.com/utilmind/garbage-collector) tool to regularly remove outdated dumps (created by schedule/crontab) after a certain number of days.
 
 
 ### **Dump only specific tables**
@@ -170,14 +172,13 @@ You can dump only selected tables by listing them **after** the filename and con
 
 ```bash
 ./db-dump.sh /backups/db-@.sql production users orders logs
-or tables as quoted list
+```
+...or tables as quoted list. Both forms are equivalent.
+```bash
 ./db-dump.sh /backups/db-@.sql production "users orders logs"
 ```
 
-
-### **Help**
-
-Show all options:
+### View help and the list of available options:
 
 ```bash
 ./db-dump.sh --help
