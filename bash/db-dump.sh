@@ -519,7 +519,18 @@ fi
 # ---------------- DUMP DATABASE ----------------
 
 if [ ! -s "$allTablesFilename" ]; then
-    log_warn "No tables selected for export. The resulting dump will be empty."
+    if [ -n "$tablesListRaw" ]; then
+        # The table lists specified explicitly. But none left after filtration.
+        log_warn "No tables selected for export. The resulting dump will be empty."
+    elif [ -n "${dbTablePrefix+x}" ] && [ "${#dbTablePrefix[@]}" -gt 0 ]; then
+        # Prefixes specified, but no tables.
+        # mysqldump will dump w/o explicit tables list and will export ALL tables in result.
+        log_warn "No tables found matching configured prefixes: ${dbTablePrefix[*]}."
+        log_info "Falling back to exporting ALL tables from database '$dbName'."
+    else
+        # No prefixes and no tables
+        log_warn "No tables found in database '$dbName'. The resulting dump will be empty."
+    fi
 fi
 
 log_info "Running $MYSQLDUMP_BIN for database '$dbName' into '$targetFilename' ..."
