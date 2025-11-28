@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-strip-mysql-compatibility-comments.py
+post-process-dump.py
 
 Copyright (c) 2025 utilmind
 All rights reserved.

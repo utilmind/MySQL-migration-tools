@@ -544,11 +544,12 @@ log_info "Running $MYSQLDUMP_BIN for database '$dbName' into '$targetFilename' .
 
 # ---------------- POST-PROCESS DUMP WITH PYTHON ----------------
 
-# strip-mysql-compatibility-comments.py:
+# post-process-dump.py:
 #   * removes old-version /*!xxxxx ... */ compatibility comments
 #   * uses TSV metadata to enrich CREATE TABLE with missing ENGINE / CHARSET / COLLATION
-#   * optionally prepends a header and a USE `db_name`; statement when --db-name is used
-postProcessor="$scriptDir/strip-mysql-compatibility-comments.py"
+#   * optionally prepends USE `db_name`; statement, when --db-name is used
+#   * optionally prepends a custom file to the dump, when --prepend-file is used
+postProcessor="$scriptDir/post-process-dump.py"
 need_fallback_use_header=0
 
 if [ -f "$postProcessor" ]; then

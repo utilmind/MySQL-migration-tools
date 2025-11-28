@@ -59,20 +59,22 @@ set "ONE_MODE=0"
 REM If you want to automatically export users/grants, set this to 1 and ensure the second .bat exists. Included in the beginning of FULL dump.
 set "EXPORT_USERS_AND_GRANTS=1"
 
-REM Remove compatibility comments + add missing options to the `CREATE TABLE` statements.
+REM Dump post-processor tool (to remove MySQL compatibility comments + add missing options to the `CREATE TABLE` statements).
 REM     * The MySQL Dump put compatibility comments for earlier versions. E.g `CREATE TRIGGER` is not supported by ancient MySQL versions.
 REM       And the MySQL Dump wraps those instructons in to magic comments, like /*!50003 CREATE*/ /*!50017 DEFINER=`user`@`host`*/ /*!50003 TRIGGER ... END */,
 REM       making issues with regular multiline comments /* ... */ within the triggers.
 REM       We can remove those compatibility comments targeted for some legacy versions (e.g. all MySQL versions lower than 8.0), to keep the important developers comments in the code.
-REM     * This tool also solves issues with importing tables to the servers with different default collations, by supplying `CREATE TABLE` statements with missing instructions.
+REM     * This tool solves issues with importing tables to the servers with different default collations, by supplying `CREATE TABLE` statements with missing instructions.
+REM     * It also prepends the single-database dumps with USE `db_name`; statement.
+REM
 REM   0 = OFF  -> keep all dumps 'as-is', as they originally exported.
 REM   1 = ON   -> produce processed dumps clean of the compatibility comments and with complete CREATE TABLE instructions.
 REM               * Python should be installed if this feature is used!
-set "REMOVE_COMPATIBILITY_COMMENTS=1"
+set "POST_PROCESS_DUMP=1"
 REM The file name appendix for dumps clean of the compatibility comments. E.g. mydata.sql -> mydata.clean.sql
-set "COMPATIBILITY_COMMENTS_APPENDIX=.clean"
+set "POST_PROCESS_APPENDIX=.clean"
 REM Replace 'python' to 'python3' or 'py', depending under which name the Python interpreter is registered in your system.
-set "COMPATIBILITY_COMMENTS_REMOVER=python ./bash/strip-mysql-compatibility-comments.py"
+set "POST_PROCESSOR=python ./bash/post-process-dump.py"
 
 
 REM ==================== READ mysqldump HELP ====================
@@ -108,7 +110,7 @@ REM Use UTF-8 for the client/server connection.
 REM NOTE that MySQL does NOT emit explicit COLLATE clauses in `CREATE TABLE` for columns/tables that use
 REM the database default collation. Such dumps implicitly depend on the original server defaults. If you
 REM import them on a server with different defaults, uniqueness and comparison rules may change. The
-REM post-processing step (REMOVE_COMPATIBILITY_COMMENTS=1) restores the original charset and collation
+REM post-processing step (POST_PROCESS_DUMP=1) restores the original charset and collation
 REM into each `CREATE TABLE` to prevent this.
 set "COMMON_OPTS=%COMMON_OPTS% --default-character-set=utf8mb4"
 
@@ -314,8 +316,8 @@ for %%D in (!DBNAMES!) do (
   ) else (
     echo     OK
 
-    if "%REMOVE_COMPATIBILITY_COMMENTS%"=="1" (
-      %COMPATIBILITY_COMMENTS_REMOVER% "%OUTDIR%\!DB!.sql" "%OUTDIR%\!DB!%COMPATIBILITY_COMMENTS_APPENDIX%.sql"
+    if "%POST_PROCESS_DUMP%"=="1" (
+      %POST_PROCESSOR% "%OUTDIR%\!DB!.sql" "%OUTDIR%\!DB!%POST_PROCESS_APPENDIX%.sql"
     )
   )
 )
@@ -327,11 +329,11 @@ REM ================== MODE 2: ALL DATABASES INTO ONE FILE ==================
 :all_in_one
 echo === Dumping ALL NON-SYSTEM databases into ONE file (excluding mysql, information_schema, performance_schema, sys) ===
 
-if "%REMOVE_COMPATIBILITY_COMMENTS%"=="1" (
+if "%POST_PROCESS_DUMP%"=="1" (
   REM parse the path in ALLDATA, to get the path\filename w/o extension
   for %%F in ("%ALLDATA%") do (
     rem %%~dpnF = drive + path + name (no extension)
-    set "ALLDATA_CLEAN=%%~dpnF%COMPATIBILITY_COMMENTS_APPENDIX%%%~xF"
+    set "ALLDATA_CLEAN=%%~dpnF%POST_PROCESS_APPENDIX%%%~xF"
   )
 ) else (
   set "=%ALLDATA%"
@@ -346,8 +348,8 @@ if errorlevel 1 (
 ) else (
   echo     OK
 
-  if "%REMOVE_COMPATIBILITY_COMMENTS%"=="1" (
-    %COMPATIBILITY_COMMENTS_REMOVER% "%ALLDATA%" "%ALLDATA_CLEAN%" "%TABLE_SCHEMAS%"
+  if "%POST_PROCESS_DUMP%"=="1" (
+    %POST_PROCESSOR% "%ALLDATA%" "%ALLDATA_CLEAN%" "%TABLE_SCHEMAS%"
   )
 
   REM Combine _users_and_grants.sql + _db_data.sql (or _db_data_CLEAN.sql) into final _db.sql
