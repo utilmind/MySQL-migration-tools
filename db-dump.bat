@@ -64,8 +64,9 @@ REM     * The MySQL Dump put compatibility comments for earlier versions. E.g `C
 REM       And the MySQL Dump wraps those instructons in to magic comments, like /*!50003 CREATE*/ /*!50017 DEFINER=`user`@`host`*/ /*!50003 TRIGGER ... END */,
 REM       making issues with regular multiline comments /* ... */ within the triggers.
 REM       We can remove those compatibility comments targeted for some legacy versions (e.g. all MySQL versions lower than 8.0), to keep the important developers comments in the code.
-REM     * This tool solves issues with importing tables to the servers with different default collations, by supplying `CREATE TABLE` statements with missing instructions.
-REM     * It also prepends the single-database dumps with USE `db_name`; statement.
+REM     * Solves issues with importing tables to the servers with different default collations, by supplying `CREATE TABLE` statements with missing instructions.
+REM     * Prepends the single-database dumps with USE `db_name`; statement.
+REM     * Replace any standalone "SET time_zone = 'UTC';" statement with "SET time_zone = '+00:00';".
 REM
 REM   0 = OFF  -> keep all dumps 'as-is', as they originally exported.
 REM   1 = ON   -> produce processed dumps clean of the compatibility comments and with complete CREATE TABLE instructions.
