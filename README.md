@@ -513,6 +513,35 @@ Once imported, the server will fully support all named time zones.
    ```bash
    mysql -u root -p < _db-dump.sql > errors.log
    ```
+---
+
+## 🛠️ How to repair InnoDB tables
+
+**AK 2025-11-28: it's not related to the migration tools, I just want to keep these notes somewhere to not forget in case of emergency.**
+
+Briefly... In November 2025, I had an incident where I ran out of disk space on a server with InnoDB tables. Unlike MyISAM tables, which are easily reindexed and repaired automatically, broken InnoDB tables are practically impossible to repair.
+However, I managed to make a dump from a dead InnoDB tables, from a database where InnoDB engine failed to start.
+
+What I did...
+1. Stopped MariaDB/MySQL, e.g.
+```bash
+systemctl stop mariadb.service
+```
+
+2. Found `my.cnf` (MariaDB/MySQL configuration, in my case it was in `/etc/my.cnf.d/` directory) and inserted the following into `[mysqld]` section:
+```
+[mysqld]
+innodb_force_recovery = 5
+read_only = 1
+skip-slave-start
+```
+
+3. Started MariaDB/MySQL, then made a dump.
+```bash
+systemctl start mariadb.service
+./dump.sh ...
+```
+
 
 ---
 
