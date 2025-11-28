@@ -339,7 +339,7 @@ if "%POST_PROCESS_DUMP%"=="1" (
 )
 
 echo Output: "%ALLDATA%"
-"%SQLBIN%%SQLDUMP%" -h %DB_HOST% -P %DB_PORT% -u %DB_USER% -p%DB_PASS% --databases !DBNAMES! %COMMON_OPTS% --result-file="%ALLDATA%"
+"%SQLBIN%%SQLDUMP%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% --databases !DBNAMES! %COMMON_OPTS% --result-file="%ALLDATA%"
 
 if errorlevel 1 (
   echo [%DATE% %TIME%] ERROR dumping ALL NON-SYSTEM DATABASES >> "%LOG%"
@@ -348,13 +348,11 @@ if errorlevel 1 (
   echo     OK
 
   if "%POST_PROCESS_DUMP%"=="1" (
-    rem Decide whether we should prepend users dump
     set "PREPEND_DUMP="
 
     if "%EXPORT_USERS_AND_GRANTS%"=="1" (
       if exist "%USERDUMP%" (
-        echo Post-processing and prepending users dump (_users_and_grants.sql)...
-        rem Leading space inside the value to make concatenation safe
+        echo Post-processing and prepending users dump ^(_users_and_grants.sql^)...
         set "PREPEND_DUMP= --prepend-file ""%USERDUMP%"""
       ) else (
         echo WARNING: users dump "%USERDUMP%" not found, running without prepend...
