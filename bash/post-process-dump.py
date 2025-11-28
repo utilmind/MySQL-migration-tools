@@ -459,8 +459,7 @@ def process_dump_stream(
     last_percent_reported = -1.0
 
     sys.stderr.write(
-        "Removing MySQL compatibility comments from '{0}' ({1:,} bytes)\n"
-        "Saving clean dump to '{2}'...\n".format(in_path, total_size, out_path)
+        "Removing MySQL compatibility comments from '{0}' ({1:,} bytes)...\n".format(in_path, total_size)
     )
 
     # State for CREATE TABLE enhancement

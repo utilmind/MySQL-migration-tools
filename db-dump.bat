@@ -319,6 +319,7 @@ for %%D in (!DBNAMES!) do (
 
     if "%POST_PROCESS_DUMP%"=="1" (
       %POST_PROCESSOR% "%OUTDIR%\!DB!.sql" "%OUTDIR%\!DB!%POST_PROCESS_APPENDIX%.sql"
+      move /Y "%OUTDIR%\!DB!%POST_PROCESS_APPENDIX%.sql" "%OUTDIR%\!DB!.sql"
     )
   )
 )
