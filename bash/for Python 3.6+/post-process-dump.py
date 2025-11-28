@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-strip-mysql-compatibility-comments.py
+post-process-dump.py
 
 Copyright (c) 2025 utilmind
 All rights reserved.
@@ -37,7 +37,9 @@ the very top of the output dump:     USE `your_db_name`;
 Optionally strip DROP* statements when --no_drop option used.
 
 Usage:
-    python strip-mysql-compatibility-comments.py [--no-drop] [--db-name DB_NAME] input.sql output.sql [tables-meta.tsv]
+    python strip-mysql-compatibility-comments.py \
+        [--no-drop] [--db-name DB_NAME] [--prepend-file FILE] \
+        input.sql output.sql [tables-meta.tsv]
 """
 
 import os
@@ -436,6 +438,7 @@ def process_dump_stream(
     default_schema: Optional[str] = None,
     db_name: Optional[str] = None,
     no_drop: Optional[bool] = False,
+    prepend_file: Optional[str] = None,
 ) -> None:
     """
     Stream-process input dump:
@@ -507,15 +510,24 @@ def process_dump_stream(
 
         fout.write(
             "-- Dump created with DB migration tools ( "
-            "https://github.com/utilmind/MySQL-migration-tools )\n"
+            "https://github.com/utilmind/MySQL-migration-tools )\n\n"
         )
+
+        # Optionally prepend external SQL file right after the header line
+        if prepend_file:
+            print(f"Prepending file '{prepend_file}' at the top of the dump...", file=sys.stderr)
+            with open(prepend_file, "r", encoding="utf-8", errors="replace") as pf:
+                prepend_content = pf.read()
+            if prepend_content:
+                fout.write(prepend_content)
+                # Ensure the prepend block ends with a newline
+                if not prepend_content.endswith(("\n", "\r")):
+                    fout.write("\n")
+                fout.write("\n")  # extra separator after prepend block
 
         if db_name:
             # If a database name is provided, also select it explicitly.
             fout.write(f"\nUSE `{db_name}`;\n\n")
-        else:
-            # Just add a blank line separator if no db_name is given.
-            fout.write("\n")
 
         while True:
             line = fin.readline()
@@ -638,6 +650,14 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--prepend-file",
+        dest="prepend_file",
+        help=(
+            "Optional SQL file to prepend right after the standard header "
+            "in the output dump."
+        ),
+    )
+    parser.add_argument(
         "input",
         help="Path to the input SQL dump file.",
     )
@@ -662,9 +682,17 @@ def main() -> None:
     tsv_path = args.tables_meta
     db_name = args.db_name
     no_drop = bool(args.no_drop)
+    prepend_file = args.prepend_file
 
     if not os.path.isfile(in_path):
         print(f"Input file not found: {in_path}", file=sys.stderr)
+        sys.exit(1)
+
+    if prepend_file is not None and not os.path.isfile(prepend_file):
+        print(
+            "Prepend file not found: {0}".format(prepend_file),
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     table_meta: Dict[str, Dict[str, Any]] = {}
@@ -681,6 +709,7 @@ def main() -> None:
         default_schema=default_schema,
         db_name=db_name,
         no_drop=no_drop,
+        prepend_file=prepend_file,
     )
 
 
