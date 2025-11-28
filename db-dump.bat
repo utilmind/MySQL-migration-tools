@@ -350,13 +350,20 @@ if errorlevel 1 (
   echo     OK
 
   if "%POST_PROCESS_DUMP%"=="1" (
+    set "PREPEND_DUMP="
+
     if "%EXPORT_USERS_AND_GRANTS%"=="1" (
-      echo Post-processing and prepending users dump (_users_and_grants.sql)...
-      %POST_PROCESSOR% --prepend-file "%USERDUMP%" "%ALLDATA%" "%ALLDATA_CLEAN%" "%TABLE_SCHEMAS%"
+      if exist "%USERDUMP%" (
+        echo Post-processing and prepending users dump (_users_and_grants.sql)...
+        set "PREPEND_DUMP= --prepend-file ""%USERDUMP%"""
+      ) else (
+        echo WARNING: users dump "%USERDUMP%" not found, running without prepend...
+      )
     ) else (
       echo Post-processing dump...
-      %POST_PROCESSOR% "%ALLDATA%" "%ALLDATA_CLEAN%" "%TABLE_SCHEMAS%"
     )
+
+    %POST_PROCESSOR%!PREPEND_DUMP! "%ALLDATA%" "%ALLDATA_CLEAN%" "%TABLE_SCHEMAS%"
   )
 )
 
