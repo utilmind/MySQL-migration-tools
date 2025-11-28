@@ -343,7 +343,7 @@ if "%POST_PROCESS_DUMP%"=="1" (
 )
 
 echo Output: "%ALLDATA%"
-rem "%SQLBIN%%SQLDUMP%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% --databases !DBNAMES! %COMMON_OPTS% --result-file="%ALLDATA%"
+"%SQLBIN%%SQLDUMP%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% --databases !DBNAMES! %COMMON_OPTS% --result-file="%ALLDATA%"
 
 if errorlevel 1 (
   echo [%DATE% %TIME%] ERROR dumping ALL NON-SYSTEM DATABASES >> "%LOG%"
