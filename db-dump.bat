@@ -336,8 +336,6 @@ if "%POST_PROCESS_DUMP%"=="1" (
     rem %%~dpnF = drive + path + name (no extension)
     set "ALLDATA_CLEAN=%%~dpnF%POST_PROCESS_APPENDIX%%%~xF"
   )
-) else (
-  set "=%ALLDATA%"
 )
 
 echo Output: "%ALLDATA%"
@@ -350,21 +348,29 @@ if errorlevel 1 (
   echo     OK
 
   if "%POST_PROCESS_DUMP%"=="1" (
-    %POST_PROCESSOR% "%ALLDATA%" "%ALLDATA_CLEAN%" "%TABLE_SCHEMAS%"
-  )
+    rem Decide whether we should prepend users dump
+    set "PREPEND_DUMP="
 
-  REM Combine _users_and_grants.sql + _db_data.sql (or _db_data_CLEAN.sql) into final _db.sql
-  REM (This is long process if the full dump is large. So if you don't want it, just disable %EXPORT_USERS_AND_GRANTS%, set EXPORT_USERS_AND_GRANTS=0.)
-  if "%EXPORT_USERS_AND_GRANTS%"=="1" (
-    if exist "%USERDUMP%" (
-      echo Combining "%USERDUMP%" and "%ALLDATA_CLEAN%" into "%OUTFILE%"... ^(Put users and grants before the data.^)
-      (
-        type "%USERDUMP%"
-        echo.
-        type "%ALLDATA_CLEAN%"
-      ) > "%OUTFILE%"
-      echo     OK, created "%OUTFILE%"
+    if "%EXPORT_USERS_AND_GRANTS%"=="1" (
+      if exist "%USERDUMP%" (
+        echo Post-processing and prepending users dump (_users_and_grants.sql)...
+        rem Leading space inside the value to make concatenation safe
+        set "PREPEND_DUMP= --prepend-file ""%USERDUMP%"""
+      ) else (
+        echo WARNING: users dump "%USERDUMP%" not found, running without prepend...
+      )
+    ) else (
+      echo Post-processing dump...
     )
+
+    rem Run post-processor (MySQL dump cleaner)
+    %POST_PROCESSOR%!PREPEND_DUMP! "%ALLDATA%" "%ALLDATA_CLEAN%" "%TABLE_SCHEMAS%"
+
+    rem Final combined dump is the processed file
+    set "OUTFILE=%ALLDATA_CLEAN%"
+  ) else (
+    rem No post-processing: final dump is the raw data file
+    set "OUTFILE=%ALLDATA%"
   )
 )
 
