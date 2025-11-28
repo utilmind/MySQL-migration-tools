@@ -377,7 +377,9 @@ if errorlevel 1 (
 )
 
 echo.
-echo === Database dump is in: %OUTFILE%
+REM Display output file name w/ absolute path
+for %%F in ("%OUTFILE%") do set "ABS_OUTFILE=%%~fF"
+echo === Database dump is in: "%ABS_OUTFILE%"
 echo.
 
 goto :after_dumps
