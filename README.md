@@ -123,6 +123,16 @@ the hostname/IP and in the `%HOST%`/`%PORT%` variables.
 But you can also run stand-alone [`dump-users-and-grants.bat`](dump-users-and-grants.bat) separately to get the list of all non-system users and
 their privileges/grants into SQL file, ready for import into another MySQL/MariaDB database.
 
+### Import dumps
+
+[`db-import.bat`](db-import.bat) supports **.gz**, **.zip** and **.rar** archives, so you don't need to manually extract dump from archive to import dump to the database. Although you should have `WinRar` or `7-Zip` installed and directory with their binaries should be listed in system `PATH`.
+
+Usage:
+```
+db-import.bat source-dump.sql[.gz]|source-dump.zip|source-dump.rar
+```
+💡You can edit `db-import.bat` on your local PC and specify hardcoded password, to avoid having to enter a password every time you import dump into the database.
+
 ---
 
 ## 🐧 Linux
