@@ -323,6 +323,10 @@ for %%D in (!DBNAMES!) do (
   )
 )
 
+echo.
+echo === Database dumps are in: %OUTDIR%
+echo.
+
 goto :after_dumps
 
 
@@ -339,7 +343,7 @@ if "%POST_PROCESS_DUMP%"=="1" (
 )
 
 echo Output: "%ALLDATA%"
-"%SQLBIN%%SQLDUMP%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% --databases !DBNAMES! %COMMON_OPTS% --result-file="%ALLDATA%"
+rem "%SQLBIN%%SQLDUMP%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% --databases !DBNAMES! %COMMON_OPTS% --result-file="%ALLDATA%"
 
 if errorlevel 1 (
   echo [%DATE% %TIME%] ERROR dumping ALL NON-SYSTEM DATABASES >> "%LOG%"
@@ -365,12 +369,16 @@ if errorlevel 1 (
     %POST_PROCESSOR%!PREPEND_DUMP! "%ALLDATA%" "%ALLDATA_CLEAN%" "%TABLE_SCHEMAS%"
 
     rem Final combined dump is the processed file
-    set "OUTFILE=%ALLDATA_CLEAN%"
+    move /Y "%ALLDATA_CLEAN%" "%OUTFILE%"
   ) else (
     rem No post-processing: final dump is the raw data file
-    set "OUTFILE=%ALLDATA%"
+    move /Y "%ALLDATA%" "%OUTFILE%"
   )
 )
+
+echo.
+echo === Database dump is in: %OUTFILE%
+echo.
 
 goto :after_dumps
 
@@ -378,10 +386,6 @@ goto :after_dumps
 REM ================== AFTER DUMPS ==================
 :after_dumps
 del "%TABLE_SCHEMAS%" 2>nul
-
-echo.
-echo === Database dumps are in: %OUTDIR%
-echo.
 
 if exist "%LOG%" (
   echo Some errors were recorded in: %LOG%
