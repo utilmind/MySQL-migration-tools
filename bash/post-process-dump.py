@@ -212,18 +212,26 @@ ENGINE_LINE_RE = re.compile(r'\)\s+ENGINE\s*=', re.IGNORECASE)
 
 def dump_has_use_statement(path):
     """
-    Return True if the input dump contains at least one 'USE `db`;' statement.
+    Return True if the input dump selects a database via a 'USE `db`;' statement
+    *before* any CREATE TABLE statement.
 
-    The file is scanned line by line without loading it entirely into memory.
+    The file is scanned line by line and stops as soon as a relevant statement
+    is found, so it does not need to read the entire dump for this check.
     """
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as f:
             for line in f:
+                # A USE statement before any DDL means the dump is already safe.
                 if USE_DB_RE.search(line):
                     return True
+                # If we see a CREATE/DROP TABLE first, then there is no selected
+                # database yet, and such statements would fail on import.
+                if CREATE_TABLE_RE.search(line):
+                    return False
     except OSError:
         # If we cannot read the file here, main() will fail later anyway.
         return False
+    # No USE and no relevant DDL found; treat as "no database selected".
     return False
 
 
