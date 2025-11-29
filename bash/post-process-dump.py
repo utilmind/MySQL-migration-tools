@@ -209,6 +209,24 @@ CREATE_TABLE_RE = re.compile(
 )
 ENGINE_LINE_RE = re.compile(r'\)\s+ENGINE\s*=', re.IGNORECASE)
 
+
+def dump_has_use_statement(path):
+    """
+    Return True if the input dump contains at least one 'USE `db`;' statement.
+
+    The file is scanned line by line without loading it entirely into memory.
+    """
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if USE_DB_RE.search(line):
+                    return True
+    except OSError:
+        # If we cannot read the file here, main() will fail later anyway.
+        return False
+    return False
+
+
 # Detect "DROP VIEW IF EXISTS `name`;"
 DROP_VIEW_RE = re.compile(
     r'^\s*DROP\s+VIEW\s+IF\s+EXISTS\s+`([^`]+)`;',
@@ -635,7 +653,9 @@ def main():
         dest="db_name",
         help=(
             "Optional database name to prepend a 'USE `DB_NAME`;' statement at the "
-            "top of the output dump."
+            "top of the output dump. If not provided and the input dump does not "
+            "contain any USE statement, you will be prompted for a database name "
+            "when running in an interactive terminal."
         ),
     )
     parser.add_argument(
@@ -685,6 +705,33 @@ def main():
     if not os.path.isfile(in_path):
         print("Input file not found: {0}".format(in_path), file=sys.stderr)
         sys.exit(1)
+
+    # If no explicit db_name is provided, check whether the dump already selects
+    # a database via a USE `db`; statement. If it does not, we may ask the user
+    # which database should be used (interactive mode only).
+    if not db_name:
+        has_use = dump_has_use_statement(in_path)
+        if not has_use:
+            if sys.stdin.isatty():
+                # Explain the situation to the user (to stderr, to not pollute stdout).
+                sys.stderr.write(
+                    "This dump does not select any database.\n"
+                    "Please provide a database name to import data into a specific database.\n"
+                    "Or leave it blank and press Enter if you want to skip database selection.\n"
+                )
+                try:
+                    user_db = input("Database name (leave blank to skip): ").strip()
+                except EOFError:
+                    user_db = ""
+                if user_db:
+                    db_name = user_db
+            else:
+                # Non-interactive mode (e.g. cron): just continue without a USE header.
+                sys.stderr.write(
+                    "No USE statement found in the dump and no --db-name was provided. "
+                    "Standard input is not interactive; continuing without selecting a database.\n"
+                )
+
 
     if prepend_file is not None and not os.path.isfile(prepend_file):
         print(
