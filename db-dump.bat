@@ -464,6 +464,7 @@ goto :after_dumps
 
 
 REM ================== FUNCTION/SUB-ROUTINE: DUMP SINGLE DATABASE ==================
+REM This function used only ONCE, but it's nice and clean. So let's keep it separately, not embed anywhere.
 :dump_single_db
 setlocal
 
