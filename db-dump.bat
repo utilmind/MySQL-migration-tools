@@ -24,12 +24,15 @@ REM      db-dump.bat
 REM        - Dump all non-system databases to separate files.
 REM
 REM      db-dump.bat --one
-REM        - Dump all non-system databases into a single SQL file.
+REM        - Dump all non-system databases into a single SQL file
+REM             (_db.sql if the target file name is not specified).
+REM        - Optionally we can specify the target file name as follows:
+REM             db-dump.bat --one=my-dump-name.sql
 REM
 REM      db-dump.bat [options] db1 db2 ...
 REM        - Dump only selected databases. Other behavior depends on internal flags and CLI options.
 REM             Valid options:
-REM                 --one - dumps all into single file.
+REM                 --one[=dump-name.sql] - dumps all into single file. Filename can be specified.
 REM                 --no-users - doesn't export user grants and privileges.
 REM
 REM =================================================================================================
