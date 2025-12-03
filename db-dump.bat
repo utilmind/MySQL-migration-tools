@@ -57,6 +57,9 @@ set "DB_PASS="
 REM Get all databases into single SQL-dump: 1 = yes, 0 = no. This option can be overridden (turned on) by `--ONE` parameter
 set "ONE_MODE=0"
 
+REM Flag: 1 when dumping ALL non-system databases (auto-detected list)
+set "ALL_DB_MODE=0"
+
 REM If you want to automatically export users/grants, set this to 1 and ensure the second .bat exists. Included in the beginning of FULL dump.
 set "EXPORT_USERS_AND_GRANTS=1"
 
@@ -177,15 +180,23 @@ REM Filename used if we dump ALL databases
 set "OUTFILE=%OUTDIR%\_db.sql"
 set "ALLDATA=%OUTDIR%\_db_data.sql"
 set "USERDUMP=%OUTDIR%\_users_and_grants.sql"
+REM Log file (errors from mysqldump, mysql, python, etc.)
 set "LOG=%OUTDIR%\__errors-dump.log"
 REM Temporary files
-set "TABLE_SCHEMAS=%TEMP%\__tables-meta.tsv"
+set "TABLE_SCHEMAS=%TEMP%\__tables-schemas.tsv"
 set "DBLIST=%TEMP%\__db-list.txt"
 set "DBNAMES="
+set "DBNAMES_IN="
 
 REM Use UTF-8 encoding for output, if needed
 chcp 65001 >nul
 setlocal EnableExtensions EnableDelayedExpansion
+
+REM Flag: script was started without any CLI arguments
+set "NO_ARGS=0"
+REM Flag: password was requested interactively from user
+set "PASS_WAS_PROMPTED=0"
+if "%~1"=="" set "NO_ARGS=1"
 
 REM Add trailing slash (\) to the end of %SQLBIN%, if it's not empty.
 if defined SQLBIN (
@@ -193,7 +204,7 @@ if defined SQLBIN (
       set "SQLBIN=!SQLBIN!\"
   )
 
-  REM Check executables. Ensure tools exist.
+  REM Check executables in specified directory (if SQLBIN specified). Ensure tools exist.
   if not exist "!SQLBIN!%SQLCLI%" (
     echo ERROR: %SQLCLI% not found at "!SQLBIN!".
     echo Please open the '%~nx0', and edit the configuration, particularly the path in SQLBIN variable.
@@ -206,6 +217,16 @@ if defined SQLBIN (
   )
 )
 
+REM Basic validations
+if not defined SQLCLI (
+  echo ERROR: SQLCLI (mysql.exe or mariadb.exe) is not defined.
+  goto :end
+)
+if not defined SQLDUMP (
+  echo ERROR: SQLDUMP (mysqldump.exe or mariadb-dump.exe) is not defined.
+  goto :end
+)
+
 
 REM Ask for password only if DB_PASS is empty
 echo Preparing database dump from %DB_HOST%:%DB_PORT% on behalf of '%DB_USER%'...
@@ -216,7 +237,9 @@ if "%DB_PASS%"=="" (
   echo.
 )
 
+REM Prepare log directory and remove previous log, if exists.
 if not exist "%OUTDIR%" mkdir "%OUTDIR%"
+if exist "%LOG%" del "%LOG%"
 
 
 REM === PARSE CLI ARGUMENTS ===
@@ -253,10 +276,9 @@ if "%EXPORT_USERS_AND_GRANTS%"=="1" (
   )
 )
 
-REM Remove previous log. (To Recycle Bin.)
-del "%LOG%" 2>nul
-
-REM If we already have the list of databases to dump, then don't retrieve names from server
+REM If DB names are passed as arguments, use them directly.
+REM Otherwise, query server for list of non-system DBs.
+echo Getting database names from server
 if "%DBNAMES%" NEQ "" goto :mode_selection
 
 echo === Getting database list from %DB_HOST%:%DB_PORT% ...
@@ -286,7 +308,11 @@ if "!DBNAMES!"=="" (
 set "ALL_DB_MODE=1"
 
 :mode_selection
-echo Databases to dump: !DBNAMES!
+if "%ALL_DB_MODE%"=="1" (
+  echo Dumping ALL databases from %DB_HOST%:%DB_PORT%: !DBNAMES!
+) else (
+  echo Dumping !DBNAMES! from %DB_HOST%:%DB_PORT%
+)
 echo.
 
 REM If started without any CLI arguments and password was not requested interactively,
@@ -308,97 +334,88 @@ for %%D in (!DBNAMES!) do (
 )
 
 REM === Dump default table schemas, to be able to restore everything exactly as on original server ===
-echo Dumping table metadata to '%TABLE_SCHEMAS%' ...
+echo Dumping table metadata to '%TABLE_SCHEMAS%'...
 "%SQLBIN%%SQLCLI%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% -N -B -e "SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, ROW_FORMAT, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA IN (!DBNAMES_IN!) ORDER BY TABLE_SCHEMA, TABLE_NAME;" > "%TABLE_SCHEMAS%"
 if errorlevel 1 (
-    echo Failed to dump table metadata.
-) else (
-    echo Done. Metadata saved to '%TABLE_SCHEMAS%'.
+  echo ERROR: Could not dump table metadata.
+  goto :end
 )
+
+echo Table metadata saved to '%TABLE_SCHEMAS%'.
+echo.
 
 REM Mode selection: separate OR single SQL dump?
 if "%ONE_MODE%"=="1" goto :all_in_one
 
 REM ================== MODE 1: ALL DATABASES SEPARATELY (DEFAULT) ==================
+echo Dumping each database into its own file...
+
 for %%D in (!DBNAMES!) do (
-  set "DB=%%D"
-  set "OUTFILE=%OUTDIR%\!DB!.sql"
-  echo.
-  echo --- Dumping database: !DB!  ^> "!OUTFILE!"
-  "%SQLBIN%%SQLDUMP%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% --databases "!DB!" %COMMON_OPTS% --result-file="!OUTFILE!"
-  if errorlevel 1 (
-    echo [%DATE% %TIME%] ERROR dumping !DB! >> "%LOG%"
-    echo     ^- See "%LOG%" for details.
-  ) else (
-    echo     OK
-
-    if "%POST_PROCESS_DUMP%"=="1" (
-      %POST_PROCESSOR% "%OUTDIR%\!DB!.sql" "%OUTDIR%\!DB!%POST_PROCESS_APPENDIX%.sql"
-      move /Y "%OUTDIR%\!DB!%POST_PROCESS_APPENDIX%.sql" "%OUTDIR%\!DB!.sql"
-    )
-  )
+  call :dump_single_db "%%D"
 )
-
-echo.
-echo === Database dumps are in: %OUTDIR%
-echo.
 
 goto :after_dumps
 
 
 REM ================== MODE 2: ALL DATABASES IN ONE FILE ==================
 :all_in_one
-echo === Dumping ALL NON-SYSTEM databases into ONE file (excluding mysql, information_schema, performance_schema, sys) ===
+echo Dumping ALL non-system databases into a single file...
 
-if "%POST_PROCESS_DUMP%"=="1" (
-  REM parse the path in ALLDATA, to get the path\filename w/o extension
-  for %%F in ("%ALLDATA%") do (
-    rem %%~dpnF = drive + path + name (no extension)
-    set "ALLDATA_CLEAN=%%~dpnF%POST_PROCESS_APPENDIX%%%~xF"
+set "ALLDUMP=%OUTDIR%\_all_databases.sql"
+if exist "%ALLDUMP%" del "%ALLDUMP%"
+
+REM Optionally prepend users/grants dump
+if "%EXPORT_USERS_AND_GRANTS%"=="1" (
+  if exist "%USERDUMP%" (
+    type "%USERDUMP%" > "%ALLDUMP%"
+    echo.>>"%ALLDUMP%"
   )
 )
 
-echo Output: "%ALLDATA%"
-"%SQLBIN%%SQLDUMP%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% --databases !DBNAMES! %COMMON_OPTS% --result-file="%ALLDATA%"
-
-if errorlevel 1 (
-  echo [%DATE% %TIME%] ERROR dumping ALL NON-SYSTEM DATABASES >> "%LOG%"
-  echo     ^- See "%LOG%" for details.
-) else (
-  echo     OK
-
-  if "%POST_PROCESS_DUMP%"=="1" (
-    set "PREPEND_DUMP="
-
-    if "%EXPORT_USERS_AND_GRANTS%"=="1" (
-      if exist "%USERDUMP%" (
-        echo Post-processing and prepending users dump ^(_users_and_grants.sql^)...
-        set "PREPEND_DUMP= --prepend-file ""%USERDUMP%"""
-      ) else (
-        echo WARNING: users dump "%USERDUMP%" not found, running without prepend...
-      )
-    ) else (
-      echo Post-processing dump...
-    )
-
-    rem Run post-processor (MySQL dump cleaner)
-    %POST_PROCESSOR%!PREPEND_DUMP! "%ALLDATA%" "%ALLDATA_CLEAN%" "%TABLE_SCHEMAS%"
-
-    rem Final combined dump is the processed file
-    move /Y "%ALLDATA_CLEAN%" "%OUTFILE%"
-  ) else (
-    rem No post-processing: final dump is the raw data file
-    move /Y "%ALLDATA%" "%OUTFILE%"
-  )
+for %%D in (!DBNAMES!) do (
+  call :dump_single_db "%%D" "%ALLDUMP%"
 )
-
-echo.
-REM Display output file name w/ absolute path
-for %%F in ("%OUTFILE%") do set "ABS_OUTFILE=%%~fF"
-echo === Database dump is in: "%ABS_OUTFILE%"
-echo.
 
 goto :after_dumps
+
+
+REM ================== FUNCTION/SUB-ROUTINE: DUMP SINGLE DATABASE ==================
+:dump_single_db
+setlocal
+
+set "DBNAME=%~1"
+set "TARGET=%~2"
+
+if "%TARGET%"=="" (
+  set "TARGET=%OUTDIR%\%DBNAME%.sql"
+)
+
+echo --- Dumping database '%DBNAME%' to '%TARGET%'...
+
+REM Run mysqldump
+"%SQLBIN%%SQLDUMP%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %COMMON_OPTS% "%DBNAME%" 1>> "%TARGET%" 2>> "%LOG%"
+if errorlevel 1 (
+  echo [ERROR] Failed to dump database '%DBNAME%'. See log: "%LOG%"
+  endlocal
+  goto :EOF
+)
+
+REM Post-process the dump if requested
+if "%POST_PROCESS_DUMP%"=="1" (
+  set "CLEAN_TARGET=%TARGET%%POST_PROCESS_APPENDIX%.sql"
+  echo Post-processing dump '%TARGET%' into '%CLEAN_TARGET%'...
+  %POST_PROCESSOR% --db-name "%DBNAME%" "%TARGET%" "%CLEAN_TARGET%" "%TABLE_SCHEMAS%" 1>> "%LOG%" 2>&1
+  if errorlevel 1 (
+    echo [WARN] Post-processing failed for '%TARGET%'. Keeping original dump.
+    del "%CLEAN_TARGET%" 2>nul
+  ) else (
+    move /Y "%CLEAN_TARGET%" "%TARGET%" >nul
+    echo Post-processing completed for '%TARGET%'.
+  )
+)
+
+endlocal
+goto :EOF
 
 
 REM ================== AFTER DUMPS ==================
