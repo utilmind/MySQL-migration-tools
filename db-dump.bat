@@ -420,7 +420,9 @@ if "%POST_PROCESS_DUMP%"=="1" (
   ) else (
     if defined CLEAN_TARGET (
         move /Y "!CLEAN_TARGET!" "%TARGET%" >nul
-        echo Post-processing completed for '%TARGET%'.
+
+        for %%I in ("%TARGET%") do set "TARGET_FULL_PATH=%%~fI"
+        echo Post-processing completed for '!TARGET_FULL_PATH!'.
     )
   )
 )
