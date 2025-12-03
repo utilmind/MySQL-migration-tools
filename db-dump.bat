@@ -23,11 +23,14 @@ REM  Usage (examples):
 REM      db-dump.bat
 REM        - Dump all non-system databases to separate files.
 REM
-REM      db-dump.bat --ONE
+REM      db-dump.bat --one
 REM        - Dump all non-system databases into a single SQL file.
 REM
-REM      db-dump.bat [options] db1 db2 ... [--one]
+REM      db-dump.bat [options] db1 db2 ...
 REM        - Dump only selected databases. Other behavior depends on internal flags and CLI options.
+REM             Valid options:
+REM                 --one - dumps all into single file.
+REM                 --no-users - doesn't export user grants and privileges.
 REM
 REM =================================================================================================
 
@@ -234,14 +237,39 @@ echo Preparing database dump from %DB_HOST%:%DB_PORT% on behalf of '%DB_USER%'..
 REM === PARSE CLI ARGUMENTS BEFORE ANY USER INPUT ===
 :parse_args
 if "%~1"=="" goto :after_args
-    REM --ONE in any position (case-insensitive)
-    if /I "%~1"=="--ONE" (
+
+    set "ARG=%~1"
+
+    REM --ONE or --ONE=filename (case-insensitive)
+    if /I "!ARG:~0,6!"=="--ONE=" (
+      set "ONE_MODE=1"
+      set "ONE_TARGET=!ARG:~6!"
+
+      if not "!ONE_TARGET!"=="" (
+        REM If user specified an absolute / rooted path, use it as-is
+        if "!ONE_TARGET:~1,1!"==":" (
+          REM Drive letter, e.g. D:\path\file.sql
+          set "OUTFILE=!ONE_TARGET!"
+        ) else if "!ONE_TARGET:~0,1!"=="\" (
+          REM Rooted path like \path\file.sql
+          set "OUTFILE=!ONE_TARGET!"
+        ) else if "!ONE_TARGET:~0,1!"=="/" (
+          REM Rooted path with forward slash
+          set "OUTFILE=!ONE_TARGET!"
+        ) else (
+          REM Otherwise treat as a filename inside OUTDIR
+          set "OUTFILE=%OUTDIR%\!ONE_TARGET!"
+        )
+      )
+
+    ) else if /I "!ARG!"=="--ONE" (
+      REM Simple --ONE without explicit filename
       set "ONE_MODE=1"
 
     REM Disable users & grants export
-    ) else if /I "%~1"=="--NO-USERS" (
+    ) else if /I "!ARG!"=="--NO-USERS" (
       set "EXPORT_USERS_AND_GRANTS=0"
-    ) else if /I "%~1"=="--NO-USER" (
+    ) else if /I "!ARG!"=="--NO-USER" (
       set "EXPORT_USERS_AND_GRANTS=0"
 
     REM Everything else is treated as a database name
@@ -318,33 +346,83 @@ if "%EXPORT_USERS_AND_GRANTS%"=="1" (
 REM If DB names are passed as arguments, use them directly.
 REM Otherwise, query server for list of non-system DBs.
 echo Getting database names from server
-if "%DBNAMES%" NEQ "" goto :mode_selection
 
 echo === Getting database list from %DB_HOST%:%DB_PORT% ...
 "%SQLBIN%%SQLCLI%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% -N -B -e "SHOW DATABASES" > "%DBLIST%"
-REM     this way could exclude system tables immediately, but this doesn't exports *empty* databases (w/o tables yet), which still could be important. So let's keep canonical SHOW DATABASES, then filter it.
-REM AK: Alternatively we could use `SELECT DISTINCT TABLE_SCHEMA FROM information_schema.tables WHERE TABLE_SCHEMA NOT IN ("information_schema", "performance_schema", "mysql", "sys");`,
 if errorlevel 1 (
   echo ERROR: Could not retrieve database list.
   goto :end
 )
 
-REM Build a list of non-system database names
-for /f "usebackq delims=" %%D in ("%DBLIST%") do (
-  set "DB=%%D"
-  if /I not "!DB!"=="information_schema" if /I not "!DB!"=="performance_schema" if /I not "!DB!"=="sys" if /I not "!DB!"=="mysql" (
-    set "DBNAMES=!DBNAMES!!DB! "
+REM If DBNAMES is empty, we will dump ALL non-system databases.
+REM If DBNAMES is NOT empty, we will validate each requested database against this list.
+
+if "%DBNAMES%"=="" (
+
+  REM Build a list of non-system database names into DBNAMES
+  set "DBNAMES="
+  for /f "usebackq delims=" %%D in ("%DBLIST%") do (
+    set "DB=%%D"
+    if /I not "!DB!"=="information_schema" if /I not "!DB!"=="performance_schema" if /I not "!DB!"=="sys" if /I not "!DB!"=="mysql" (
+      set "DBNAMES=!DBNAMES!!DB! "
+    )
   )
+
+  del "%DBLIST%" 2>nul
+
+  if "!DBNAMES!"=="" (
+    echo No non-system databases found.
+    goto :after_dumps
+  )
+
+  set "ALL_DB_MODE=1"
+
+) else (
+
+  REM User provided one or more database names on the CLI: validate them.
+  set "VALID_DBNAMES="
+
+  for %%D in (!DBNAMES!) do (
+    REM Check if this database exists in the SHOW DATABASES output
+    findstr /R /C:"^%%D$" "%DBLIST%" >nul 2>&1
+    if errorlevel 1 (
+      echo.
+      echo [WARN] Database '%%D' does not exist on %DB_HOST%:%DB_PORT%.
+      choice /C YN /N /M "Continue without this database? [Y/N]: "
+      if errorlevel 2 (
+        echo.
+        echo Aborting on user request.
+        del "%DBLIST%" 2>nul
+        goto :after_dumps
+      ) else (
+        echo Skipping database '%%D'.
+      )
+    ) else (
+      if defined VALID_DBNAMES (
+        set "VALID_DBNAMES=!VALID_DBNAMES! %%D"
+      ) else (
+        set "VALID_DBNAMES=%%D"
+      )
+    )
+  )
+
+  del "%DBLIST%" 2>nul
+
+  if not defined VALID_DBNAMES (
+    echo No valid databases remain after validation. Nothing to dump.
+    goto :after_dumps
+  )
+
+  set "DBNAMES=!VALID_DBNAMES!"
 )
 
-del "%DBLIST%" 2>nul
-
-if "!DBNAMES!"=="" (
-  echo No non-system databases found.
-  goto :after_dumps
+:mode_selection
+if "%ALL_DB_MODE%"=="1" (
+  echo Dumping ALL databases from %DB_HOST%:%DB_PORT%: !DBNAMES!
+) else (
+  echo Dumping !DBNAMES! from %DB_HOST%:%DB_PORT%
 )
-
-set "ALL_DB_MODE=1"
+echo.
 
 :mode_selection
 if "%ALL_DB_MODE%"=="1" (
@@ -456,6 +534,9 @@ REM Move final dump (raw or cleaned) to OUTFILE (this is what we show in "Planne
 if exist "%OUTFILE%" del "%OUTFILE%"
 move /Y "%FINAL_DUMP%" "%OUTFILE%" >nul
 
+REM We no longer need the raw combined dump file
+if exist "%ALLDATA%" del "%ALLDATA%" >nul 2>&1
+
 for %%I in ("%OUTFILE%") do set "FINAL_FULL=%%~fI"
 echo Single dump file is: "!FINAL_FULL!"
 echo.
@@ -464,7 +545,8 @@ goto :after_dumps
 
 
 REM ================== FUNCTION/SUB-ROUTINE: DUMP SINGLE DATABASE ==================
-REM This function used only ONCE, but it's nice and clean. So let's keep it separately, not embed anywhere.
+REM This function used only ONCE (where we dump databases into separate files),
+REM but it's nice and clean. So let's keep it separately, not embed anywhere.
 :dump_single_db
 setlocal
 
