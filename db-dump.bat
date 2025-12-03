@@ -389,29 +389,76 @@ for %%D in (!DBNAMES!) do (
 goto :after_dumps
 
 
-REM ================== MODE 2: ALL DATABASES IN ONE FILE ==================
+REM ================== MODE 2: ALL DATABASES INTO ONE FILE ==================
 :all_in_one
+REM Here we create ONE combined dump using a single mysqldump call.
+
 if "%ALL_DB_MODE%"=="1" (
   echo Dumping ALL non-system databases into a single file...
 ) else (
   echo Dumping selected databases into a single file...
 )
 
-REM OUTFILE is the single combined dump file (must match "Planned action")
-if exist "%OUTFILE%" del "%OUTFILE%"
+REM Raw combined dump (before post-processing)
+REM Example: _db_data.sql
+set "ALLDATA=%OUTDIR%\_db_data.sql"
 
-REM Optionally prepend users/grants dump to the single output file
-if "%EXPORT_USERS_AND_GRANTS%"=="1" (
-  if exist "%USERDUMP%" (
-    type "%USERDUMP%" > "%OUTFILE%"
-    echo.>>"%OUTFILE%"
+REM Prepare the name for the cleaned dump if post-processing is enabled
+if "%POST_PROCESS_DUMP%"=="1" (
+  REM %%~dpnF = drive + path + name (no extension), %%~xF = extension
+  for %%F in ("%ALLDATA%") do (
+    set "ALLDATA_CLEAN=%%~dpnF%POST_PROCESS_APPENDIX%%%~xF"
   )
 )
 
-REM Append each database dump to the same OUTFILE
-for %%D in (!DBNAMES!) do (
-  call :dump_single_db "%%D" "%OUTFILE%"
+echo Raw output file will be: "%ALLDATA%"
+
+REM Single mysqldump call for all databases
+REM (stderr goes to log, output goes directly to ALLDATA)
+"%SQLBIN%%SQLDUMP%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %COMMON_OPTS% --databases !DBNAMES! --result-file="%ALLDATA%" 2>> "%LOG%"
+
+if errorlevel 1 (
+  echo [%DATE% %TIME%] ERROR dumping multiple databases >> "%LOG%"
+  echo [ERROR] Failed to dump multiple databases. See log: "%LOG%"
+  echo.
+  goto :after_dumps
+) else (
+  echo Combined raw dump created.
 )
+
+REM Decide what will be the final file (with or without post-processing)
+set "FINAL_DUMP=%ALLDATA%"
+
+if "%POST_PROCESS_DUMP%"=="1" (
+  set "PREPEND_DUMP="
+
+  REM If we have users+grants dump, tell post-processor to prepend it
+  if "%EXPORT_USERS_AND_GRANTS%"=="1" (
+    if exist "%USERDUMP%" (
+      echo Post-processing and prepending users dump ^(_users_and_grants.sql^)...
+      set "PREPEND_DUMP= --prepend-file ""%USERDUMP%"""
+    )
+  )
+
+  echo Post-processing combined dump...
+  REM IMPORTANT: here we do NOT pass --db-name, because this is a multi-database dump
+  %POST_PROCESSOR%!PREPEND_DUMP! "%ALLDATA%" "%ALLDATA_CLEAN%" "%TABLE_SCHEMAS%"
+
+  if errorlevel 1 (
+    echo [WARN] Post-processing failed for "%ALLDATA%". Keeping raw dump.
+    if exist "%ALLDATA_CLEAN%" del "%ALLDATA_CLEAN%" 2>nul
+  ) else (
+    set "FINAL_DUMP=%ALLDATA_CLEAN%"
+  )
+)
+
+REM Move final dump (raw or cleaned) to OUTFILE (this is what we show in "Planned action")
+if exist "%OUTFILE%" del "%OUTFILE%"
+move /Y "%FINAL_DUMP%" "%OUTFILE%" >nul
+
+for %%I in ("%OUTFILE%") do set "FINAL_FULL=%%~fI"
+echo Single dump file is: "!FINAL_FULL!"
+echo.
 
 goto :after_dumps
 
