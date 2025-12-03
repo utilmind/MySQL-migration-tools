@@ -391,21 +391,26 @@ goto :after_dumps
 
 REM ================== MODE 2: ALL DATABASES IN ONE FILE ==================
 :all_in_one
-echo Dumping ALL non-system databases into a single file...
+if "%ALL_DB_MODE%"=="1" (
+  echo Dumping ALL non-system databases into a single file...
+) else (
+  echo Dumping selected databases into a single file...
+)
 
-set "ALLDUMP=%OUTDIR%\_all_databases.sql"
-if exist "%ALLDUMP%" del "%ALLDUMP%"
+REM OUTFILE is the single combined dump file (must match "Planned action")
+if exist "%OUTFILE%" del "%OUTFILE%"
 
-REM Optionally prepend users/grants dump
+REM Optionally prepend users/grants dump to the single output file
 if "%EXPORT_USERS_AND_GRANTS%"=="1" (
   if exist "%USERDUMP%" (
-    type "%USERDUMP%" > "%ALLDUMP%"
-    echo.>>"%ALLDUMP%"
+    type "%USERDUMP%" > "%OUTFILE%"
+    echo.>>"%OUTFILE%"
   )
 )
 
+REM Append each database dump to the same OUTFILE
 for %%D in (!DBNAMES!) do (
-  call :dump_single_db "%%D" "%ALLDUMP%"
+  call :dump_single_db "%%D" "%OUTFILE%"
 )
 
 goto :after_dumps
