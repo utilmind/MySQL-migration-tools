@@ -289,10 +289,18 @@ REM === ONLY NOW ASK FOR PASSWORD (IF NOT SET IN SCRIPT) ===
 if "%DB_PASS%"=="" (
   echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^) or press Ctrl+C to terminate.
   set /p "DB_PASS=> "
+  set "PASS_WAS_PROMPTED=1"
   echo.
 )
 
-REM Create output directory after showing plan + reading password
+REM === Pause only when user did NOT enter a password AND no params were given ===
+if "%NO_ARGS%"=="1" if "%PASS_WAS_PROMPTED%"=="0" (
+  echo.
+  pause
+  echo.
+)
+
+REM Create output directory
 if not exist "%OUTDIR%" mkdir "%OUTDIR%"
 
 
