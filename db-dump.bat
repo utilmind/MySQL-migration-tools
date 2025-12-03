@@ -413,10 +413,12 @@ if "%POST_PROCESS_DUMP%"=="1" (
   %POST_PROCESSOR% --db-name "%DBNAME%" "%TARGET%" "!CLEAN_TARGET!" "%TABLE_SCHEMAS%"
   if errorlevel 1 (
     echo [WARN] Post-processing failed for '%TARGET%'. Keeping original dump.
-    del "!CLEAN_TARGET!" 2>nul
+    if defined CLEAN_TARGET del "!CLEAN_TARGET!" 2>nul
   ) else (
-    move /Y "!CLEAN_TARGET!" "%TARGET%" >nul
-    echo Post-processing completed for '%TARGET%'.
+    if defined CLEAN_TARGET (
+        move /Y "!CLEAN_TARGET!" "%TARGET%" >nul
+        echo Post-processing completed for '%TARGET%'.
+    )
   )
 )
 
