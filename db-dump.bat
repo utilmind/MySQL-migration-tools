@@ -219,11 +219,11 @@ if defined SQLBIN (
 
 REM Basic validations
 if not defined SQLCLI (
-  echo ERROR: SQLCLI (mysql.exe or mariadb.exe) is not defined.
+  echo ERROR: SQLCLI ^(mysql.exe or mariadb.exe^) is not defined.
   goto :end
 )
 if not defined SQLDUMP (
-  echo ERROR: SQLDUMP (mysqldump.exe or mariadb-dump.exe) is not defined.
+  echo ERROR: SQLDUMP ^(mysqldump.exe or mariadb-dump.exe^) is not defined.
   goto :end
 )
 
