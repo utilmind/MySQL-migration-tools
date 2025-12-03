@@ -410,7 +410,7 @@ REM Post-process the dump if requested
 if "%POST_PROCESS_DUMP%"=="1" (
   set "CLEAN_TARGET=%TARGET%%POST_PROCESS_APPENDIX%.sql"
   echo Post-processing dump '%TARGET%' into '!CLEAN_TARGET!'...
-  %POST_PROCESSOR% --db-name "%DBNAME%" "%TARGET%" "!CLEAN_TARGET!" "%TABLE_SCHEMAS%" 2>> "%LOG%"
+  %POST_PROCESSOR% --db-name "%DBNAME%" "%TARGET%" "!CLEAN_TARGET!" "%TABLE_SCHEMAS%"
   if errorlevel 1 (
     echo [WARN] Post-processing failed for '%TARGET%'. Keeping original dump.
     del "!CLEAN_TARGET!" 2>nul
