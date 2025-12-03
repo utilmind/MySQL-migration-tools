@@ -387,8 +387,15 @@ if "%DBNAMES%"=="" (
 
   for %%D in (!DBNAMES!) do (
     REM Check if this database exists in the SHOW DATABASES output
-    findstr /R /C:"^%%D$" "%DBLIST%" >nul 2>&1
-    if errorlevel 1 (
+    set "FOUND_DB="
+
+    for /f "usebackq delims=" %%X in ("%DBLIST%") do (
+      if /I "%%D"=="%%X" (
+        set "FOUND_DB=1"
+      )
+    )
+
+    if not defined FOUND_DB (
       echo.
       echo [WARN] Database '%%D' does not exist on %DB_HOST%:%DB_PORT%.
       choice /C YN /N /M "Continue without this database? [Y/N]: "
