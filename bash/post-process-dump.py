@@ -25,16 +25,21 @@ The script never loads the whole file into memory.
 It reads line by line and only keeps one versioned comment block
 in memory at a time.
 
-Optionally, if a table metadata TSV is provided, it will also
-normalize CREATE TABLE statements to include ENGINE, ROW_FORMAT,
-DEFAULT CHARSET and COLLATE according to the original server
-metadata extracted from information_schema.TABLES.
+Additionally:
+  * Optionally, if a table metadata TSV is provided, normalize
+    CREATE TABLE using metadata from information_schema.TABLES
+    (ENGINE, ROW_FORMAT, DEFAULT CHARSET and COLLATE), according
+    to the original server metadata extracted from information_schema.TABLES.
 
-Optionally provide a database name via the --db-name / --db option.
-In that case the script will prepend the following lines at
-the very top of the output dump:     USE `your_db_name`;
+  * Optionally provide a database name via the --db-name / --db option.
+    In that case the script will prepend the following lines at
+    the very top of the output dump:     USE `your_db_name`;
 
-Optionally strip DROP* statements when --no_drop option used.
+  * Optionally prepend an extra SQL file.
+
+  * Optionally skip DROP TABLE / DROP DATABASE when --no-drop option used.
+
+  * Replace standalone `SET time_zone = 'UTC';` → `SET time_zone = '+00:00';`.
 
 Usage:
     python strip-mysql-compatibility-comments.py \
@@ -69,388 +74,318 @@ def find_conditional_end(comment):
     while j < n and comment[j].isdigit():
         j += 1
     digits_end = j
-    version_str = comment[3:digits_end]
-    if not version_str:
-        return None, None
 
-    depth = 0
-    k = digits_end
-    end_pos = None
-
-    while k < n - 1:
-        two = comment[k:k + 2]
-
-        if two == "/*":
-            # nested regular block comment
+    depth = 1  # we are inside one block comment already
+    i = j
+    while i < n - 1:
+        pair = comment[i : i + 2]
+        if pair == "/*":
             depth += 1
-            k += 2
+            i += 2
             continue
-
-        if two == "*/":
+        if pair == "*/":
+            depth -= 1
             if depth == 0:
-                end_pos = k
-                break
-            else:
-                depth -= 1
-                k += 2
-                continue
+                return i, digits_end
+            i += 2
+            continue
+        i += 1
 
-        k += 1
-
-    return end_pos, digits_end
+    return None, digits_end
 
 
-def report_progress(processed_bytes, total_size, last):
+def strip_version_from_comment_text(comment):
     """
-    Print progress to stderr on a single line using carriage return.
-    Returns the updated 'last' value.
+    Given the full content of a versioned comment string that begins
+    with "/*!<digits>", return the inner content with:
+
+      1) The leading '/*!<digits>' removed
+      2) The trailing '*/' removed
+
+    and preserving everything else (including nested comments, etc.).
     """
-    if total_size <= 0:
-        percent = 100.0
-    else:
-        percent = (processed_bytes / float(total_size)) * 100.0
+    if not comment.startswith("/*!"):
+        return comment
 
-    if percent - last >= 1.0 or percent == 100.0:
-        sys.stderr.write("\r{0:5.1f}%...".format(percent))
-        sys.stderr.flush()
-        return percent
+    end_pos, digits_end = find_conditional_end(comment)
+    if end_pos is None:
+        return comment
 
-    return last
+    inner = comment[digits_end:end_pos]
+    return inner
 
 
-# --- Table metadata loading and CREATE TABLE enhancement ----------------------
+def extract_version_number(comment):
+    """
+    Extract leading digits from a "/*!<digits>" comment.
+
+    For example:
+        "/*!40101 SET ..." -> 40101
+        "/*!80000 CREATE ..." -> 80000
+
+    If no digits found, return None.
+    """
+    if not comment.startswith("/*!"):
+        return None
+
+    i = 3
+    n = len(comment)
+    while i < n and comment[i].isdigit():
+        i += 1
+    digits = comment[3:i]
+    if not digits:
+        return None
+    return int(digits)
+
+
+def find_matching_paren(s, start_index):
+    """
+    Given a string `s` and an index `start_index` such that s[start_index]
+    is an opening parenthesis '(', find the index of the matching closing
+    parenthesis ')', taking into account nested parentheses.
+
+    Returns:
+        index of the matching ')' or None if not found.
+    """
+    depth = 0
+    for i in range(start_index, len(s)):
+        c = s[i]
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+    return None
+
+
+def parse_qualified_table_name(token):
+    """
+    Parse a qualified table name of the form:
+
+        `schema`.`table`
+        schema.table
+        table
+
+    and return (schema_name, table_name).
+
+    The backticks may be present or absent. We also handle a single
+    backtick-wrapped identifier like `table` as (None, "table").
+
+    Examples:
+        "mydb.mytable"         -> ("mydb", "mytable")
+        "`mydb`.`mytable`"     -> ("mydb", "mytable")
+        "mytable"              -> (None, "mytable")
+        "`weird-db`.`t-1`"     -> ("weird-db", "t-1")
+    """
+    token = token.strip()
+
+    m = re.match(r"^`([^`]+)`\.`([^`]+)`$", token)
+    if m:
+        return m.group(1), m.group(2)
+
+    m = re.match(r"^`([^`]+)`$", token)
+    if m:
+        return None, m.group(1)
+
+    if "." in token:
+        parts = token.split(".", 1)
+        schema = parts[0].strip("`")
+        table = parts[1].strip("`")
+        return schema, table
+
+    return None, token.strip("`")
+
+
+def apply_table_options(create_stmt, tbl_meta, use_ddl_collate=True):
+    """
+    Given a full CREATE TABLE statement (excluding the trailing semicolon),
+    and a table metadata dict with keys:
+
+        ENGINE          - e.g. "InnoDB"
+        ROW_FORMAT      - e.g. "Compact", "Dynamic", or "Fixed", etc.
+        TABLE_COLLATION - e.g. "utf8mb4_unicode_ci"
+
+    produce a normalized CREATE TABLE statement that includes:
+
+        ENGINE=<value>
+        ROW_FORMAT=<value>
+        COLLATE=<value>
+
+    if they are not already explicitly present in the CREATE statement.
+    """
+    engine = tbl_meta.get("ENGINE")
+    row_format = tbl_meta.get("ROW_FORMAT")
+    table_collation = tbl_meta.get("TABLE_COLLATION")
+
+    stmt_up = create_stmt.upper()
+    engine_present = " ENGINE=" in stmt_up
+    row_format_present = " ROW_FORMAT=" in stmt_up
+    collate_present = " COLLATE=" in stmt_up
+
+    def _ensure_option(statement, key, value):
+        if not value:
+            return statement
+
+        upper_stmt = statement.upper()
+        key_pattern = f" {key}="
+
+        if key_pattern not in upper_stmt:
+            return statement + f" {key}={value}"
+
+        pattern = re.compile(rf"({key_pattern})(\S+)", flags=re.IGNORECASE)
+        new_statement = pattern.sub(
+            rf"\1{value}",
+            statement,
+            count=1,
+        )
+        return new_statement
+
+    new_stmt = create_stmt
+
+    if engine and not engine_present:
+        new_stmt = _ensure_option(new_stmt, "ENGINE", engine)
+        stmt_up = new_stmt.upper()
+
+    if row_format and not row_format_present:
+        new_stmt = _ensure_option(new_stmt, "ROW_FORMAT", row_format)
+        stmt_up = new_stmt.upper()
+
+    if use_ddl_collate and table_collation and not collate_present:
+        coll = table_collation
+        if "_" in coll:
+            charset = coll.split("_", 1)[0]
+        else:
+            charset = None
+
+        if charset:
+            if " CHARACTER SET " not in stmt_up and "CHARSET=" not in stmt_up:
+                new_stmt = new_stmt + f" DEFAULT CHARACTER SET {charset}"
+            stmt_up = new_stmt.upper()
+
+        new_stmt = _ensure_option(new_stmt, "COLLATE", coll)
+
+    return new_stmt
 
 
 def load_table_metadata(tsv_path):
     """
-    Load table metadata from TSV file produced by a query like:
+    Load table metadata from a TSV file with columns:
 
-        SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, ROW_FORMAT, TABLE_COLLATION
-        FROM information_schema.TABLES
-        WHERE TABLE_SCHEMA IN (...);
+        TABLE_SCHEMA    - database (schema) name
+        TABLE_NAME      - table name
+        ENGINE
+        ROW_FORMAT
+        TABLE_COLLATION
 
     Returns:
-        (meta, default_schema)
+        (table_meta, default_schema)
 
-        meta: dict with keys "schema.table" and values:
-              {
-                  "engine": Optional[str],
-                  "row_format": Optional[str],
-                  "table_collation": Optional[str]
-              }
-
-        default_schema: if all rows share the same TABLE_SCHEMA,
-                        this schema name is returned, otherwise None.
+        table_meta     dict keyed by (schema, table_name) with small dict values
+        default_schema string or None
     """
-    meta = {}
-    schemas = set()
+    table_meta = {}
+    default_schema = None
 
-    if not os.path.isfile(tsv_path):
-        sys.stderr.write(
-            "\n[WARN] Table metadata TSV not found: {0}. "
-            "CREATE TABLE enhancement will be skipped.\n".format(tsv_path)
-        )
-        return meta, None
-
-    sys.stderr.write("\nLoading table metadata from '{0}'...\n".format(tsv_path))
+    if tsv_path is None:
+        return table_meta, default_schema
 
     with open(tsv_path, "r", encoding="utf-8", errors="replace") as f:
         for line in f:
-            line = line.rstrip("\n\r")
+            line = line.rstrip("\n")
             if not line:
                 continue
             parts = line.split("\t")
             if len(parts) < 5:
                 continue
+            schema, table, engine, row_format, coll = parts[:5]
 
-            schema, table, engine, row_format, table_collation = parts[:5]
+            if default_schema is None and schema and schema.lower() not in (
+                "information_schema",
+                "performance_schema",
+                "mysql",
+                "sys",
+            ):
+                default_schema = schema
 
-            schemas.add(schema)
-            key = "{0}.{1}".format(schema, table)
-
-            # Normalize engine
-            eng = (engine or "").strip()
-            if not eng or eng.upper() == "NULL":
-                eng = None
-
-            # Normalize row_format
-            rf = (row_format or "").strip()
-            if not rf or rf.upper() == "NULL":
-                rf = None
-            else:
-                rf = rf.upper()
-
-            # Normalize collation
-            tc = (table_collation or "").strip()
-            if not tc or tc.upper() == "NULL":
-                tc = None
-
-            meta[key] = {
-                "engine": eng,
-                "row_format": rf,
-                "table_collation": tc,
+            table_meta[(schema, table)] = {
+                "ENGINE": engine or None,
+                "ROW_FORMAT": row_format or None,
+                "TABLE_COLLATION": coll or None,
             }
 
-    default_schema = None
-    if len(schemas) == 1:
-        default_schema = next(iter(schemas))
-
-    msg = "Loaded metadata for {0} tables".format(len(meta))
-    if default_schema:
-        msg += " in schema {0!r}".format(default_schema)
-    sys.stderr.write(msg + "\n")
-    return meta, default_schema
+    return table_meta, default_schema
 
 
-# Precompiled regexes for CREATE TABLE / USE detection
-USE_DB_RE = re.compile(r'^\s*USE\s+`([^`]+)`;', re.IGNORECASE)
-CREATE_TABLE_RE = re.compile(
-    r'^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`([^`]+)`', re.IGNORECASE
-)
-ENGINE_LINE_RE = re.compile(r'\)\s+ENGINE\s*=', re.IGNORECASE)
-
-
-def dump_has_use_statement(path):
+def normalize_create_table(stmt, table_meta, default_schema=None):
     """
-    Return True if the input dump selects a database via a 'USE `db`;' statement
-    *before* any CREATE TABLE statement.
-
-    The file is scanned line by line and stops as soon as a relevant statement
-    is found, so it does not need to read the entire dump for this check.
+    Try to detect CREATE TABLE and fill in ENGINE, ROW_FORMAT and COLLATE
+    using the provided metadata.
     """
-    try:
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
-            for line in f:
-                # A USE statement before any DDL means the dump is already safe.
-                if USE_DB_RE.search(line):
-                    return True
-                # If we see a CREATE/DROP TABLE first, then there is no selected
-                # database yet, and such statements would fail on import.
-                if CREATE_TABLE_RE.search(line):
-                    return False
-    except OSError:
-        # If we cannot read the file here, main() will fail later anyway.
-        return False
-    # No USE and no relevant DDL found; treat as "no database selected".
-    return False
+    stripped = stmt.strip()
+    upper_stmt = stripped.upper()
+    if not upper_stmt.startswith("CREATE TABLE"):
+        return stmt
+
+    m = re.match(
+        r"(?is)CREATE\s+TABLE\s+(.+?)\s*\(",
+        stripped,
+    )
+    if not m:
+        return stmt
+
+    table_token = m.group(1).strip()
+    schema, table = parse_qualified_table_name(table_token)
+
+    if schema is None:
+        schema = default_schema
+
+    if not table:
+        return stmt
+
+    key = (schema, table)
+    tbl_meta = table_meta.get(key)
+    if not tbl_meta:
+        return stmt
+
+    before_paren_index = stripped.upper().find(table_token.upper())
+    if before_paren_index == -1:
+        return apply_table_options(stripped, tbl_meta)
+
+    open_paren_index = stripped.find("(", before_paren_index + len(table_token))
+    if open_paren_index == -1:
+        return apply_table_options(stripped, tbl_meta)
+
+    close_paren_index = find_matching_paren(stripped, open_paren_index)
+    if close_paren_index is None:
+        return apply_table_options(stripped, tbl_meta)
+
+    new_stmt = apply_table_options(stripped, tbl_meta)
+    return new_stmt
 
 
-# Detect "DROP VIEW IF EXISTS `name`;"
-DROP_VIEW_RE = re.compile(
-    r'^\s*DROP\s+VIEW\s+IF\s+EXISTS\s+`([^`]+)`;',
-    re.IGNORECASE
-)
-
-# Generic detection of DROP* statements for optional stripping.
-# Matches lines that begin (ignoring leading whitespace) with DROP ...;
-# and a special case for versioned comments like "/*!50001 DROP ... */".
-DROP_STMT_RE = re.compile(r'^\s*DROP\b', re.IGNORECASE)
-VERSIONED_DROP_STMT_RE = re.compile(r'^\s*/\*![0-9]+\s*DROP\b', re.IGNORECASE)
-
-# Normalize "SET time_zone = 'UTC';" to "SET time_zone = '+00:00';"
-# Handles arbitrary spaces and one or more semicolons at the end of the line.
-TIME_ZONE_UTC_RE = re.compile(
-    r'(?im)^(\s*SET\s+time_zone\s*=\s*)([\'"])UTC\2(.*)$'
-)
-
-
-def replace_utc_time_zone(text):
+def remove_time_zone_utc_literal(stmt):
     """
-    Replace any standalone "SET time_zone = 'UTC';" statement (with arbitrary
-    spacing and one or more semicolons) with "SET time_zone = '+00:00';".
+    Replace:
 
-    This is done in a multiline-safe manner and should not affect data payloads,
-    because the pattern is anchored to the beginning of the line.
+        SET time_zone = 'UTC';
+
+    with:
+
+        SET time_zone = '+00:00';
+
+    when it appears as a standalone statement (ignoring whitespace).
     """
-    return TIME_ZONE_UTC_RE.sub(r"\1'+00:00'\3", text)
+    stripped = stmt.strip().rstrip(";")
 
+    upper_line = stripped.upper()
+    if upper_line == "SET TIME_ZONE = 'UTC'":
+        return "SET time_zone = '+00:00';"
 
-def enhance_create_table(text, state, table_meta, default_schema):
-    """
-    Enhance CREATE TABLE statements in the given text chunk using table_meta.
+    if upper_line == "SET TIME_ZONE = '+00:00'":
+        return stripped + ";"
 
-    Skips enhancement for temporary CREATE TABLE emitted before a VIEW:
-      DROP VIEW IF EXISTS `v`;
-      CREATE TABLE `v` (...);   -- do not touch it
-
-    Only *adds* missing tokens; never removes existing ones
-    (AUTO_INCREMENT, COMMENT, STATS_*, etc. are preserved).
-    """
-    if not table_meta:
-        return text
-
-    out_lines = []
-
-    # State fields:
-    current_schema = state.get("current_schema") or default_schema
-    in_create = state.get("in_create", False)
-    current_table = state.get("current_table")
-    buffer = state.get("buffer", "")
-
-    # Remember that next CREATE TABLE for this name is a VIEW-shadow
-    skip_for_table = state.get("skip_for_table")
-    if skip_for_table is None:
-        skip_for_table = set()
-
-    def append_chunk(s):
-        out_lines.append(s)
-
-    for line in text.splitlines(keepends=True):
-        # Track USE `db`;
-        m_use = USE_DB_RE.match(line)
-        if m_use:
-            current_schema = m_use.group(1)
-
-        # Track "DROP VIEW IF EXISTS `x`;"
-        m_dv = DROP_VIEW_RE.match(line)
-        if m_dv:
-            skip_for_table.add(m_dv.group(1))
-            append_chunk(line)
-            continue
-
-        if not in_create:
-            m_create = CREATE_TABLE_RE.match(line)
-            if m_create:
-                in_create = True
-                current_table = m_create.group(1)
-                buffer = line
-                continue
-            else:
-                append_chunk(line)
-                continue
-        else:
-            buffer += line
-            if ENGINE_LINE_RE.search(line):
-                # Got last line of CREATE TABLE
-                full = buffer
-
-                # If this CREATE TABLE is the temporary one used for a VIEW — skip enhancement once
-                if current_table in skip_for_table:
-                    append_chunk(full)
-                    skip_for_table.discard(current_table)
-                    in_create = False
-                    current_table = None
-                    buffer = ""
-                    continue
-
-                # Resolve metadata key (schema.table)
-                schema_to_use = current_schema or default_schema
-                if schema_to_use:
-                    key = "{0}.{1}".format(schema_to_use, current_table)
-                else:
-                    # No schema info: try by table name uniqueness
-                    matches = [
-                        k for k in table_meta.keys()
-                        if k.endswith(".{0}".format(current_table))
-                    ]
-                    if len(matches) == 1:
-                        key = matches[0]
-                    else:
-                        key = None
-
-                info = table_meta.get(key) if key else None
-
-                if info:
-                    engine = info["engine"]
-                    row_format = info["row_format"]      # None or UPPER
-                    table_collation = info["table_collation"]  # may be None
-
-                    # If metadata looks broken — do not inject NULLs; warn and pass through
-                    if not engine or not table_collation:
-                        sys.stderr.write(
-                            "\n[WARN] Missing metadata for {0}: ENGINE={1!r}, "
-                            "COLLATION={2!r}. CREATE TABLE kept as-is.\n".format(
-                                key or current_table, engine, table_collation
-                            )
-                        )
-                        append_chunk(full)
-                    else:
-                        # Derive charset from collation: e.g. utf8mb4_general_ci -> utf8mb4
-                        charset = table_collation.split("_", 1)[0]
-
-                        # --- augment last line tokens instead of replacing the whole line ---
-                        lines = full.splitlines(keepends=True)
-                        last_line = lines[-1]
-
-                        close_idx = last_line.find(")")
-                        if close_idx == -1:
-                            # Degenerate case: just emit as-is
-                            append_chunk(full)
-                        else:
-                            prefix = last_line[:close_idx]   # indentation + ')'
-                            rest = last_line[close_idx + 1:]  # tokens part
-
-                            # Parse existing tokens
-                            has_engine = re.search(r'\bENGINE\s*=', rest, re.I) is not None
-                            has_rowfmt = re.search(r'\bROW_FORMAT\s*=', rest, re.I) is not None
-                            has_def_charset = re.search(
-                                r'\bDEFAULT\s+CHARSET\s*=', rest, re.I
-                            ) is not None
-                            has_collate = re.search(
-                                r'\bCOLLATE\s*=', rest, re.I
-                            ) is not None
-
-                            additions = []
-
-                            if not has_engine:
-                                additions.append(" ENGINE={0}".format(engine))
-                            if row_format and not has_rowfmt:
-                                additions.append(" ROW_FORMAT={0}".format(row_format))
-                            if not has_def_charset:
-                                additions.append(" DEFAULT CHARSET={0}".format(charset))
-                                if not has_collate:
-                                    additions.append(" COLLATE={0}".format(table_collation))
-                            else:
-                                # DEFAULT CHARSET present; add COLLATE if missing
-                                if not has_collate:
-                                    additions.append(" COLLATE={0}".format(table_collation))
-
-                            # Detect newline at the end
-                            nl = ""
-                            if rest.endswith("\r\n"):
-                                nl = "\r\n"
-                                rest_core = rest[:-2]
-                            elif rest.endswith("\n"):
-                                nl = "\n"
-                                rest_core = rest[:-1]
-                            else:
-                                rest_core = rest
-
-                            # If rest_core already ends with ';', insert additions before it
-                            if rest_core.rstrip().endswith(";"):
-                                semi_pos = rest_core.rfind(";")
-                                new_rest_core = (
-                                    rest_core[:semi_pos]
-                                    + "".join(additions)
-                                    + rest_core[semi_pos:]
-                                )
-                            else:
-                                new_rest_core = rest_core + "".join(additions)
-
-                            new_last_line = "{0}){1}{2}".format(prefix, new_rest_core, nl)
-                            lines[-1] = new_last_line
-                            full = "".join(lines)
-                            append_chunk(full)
-                else:
-                    # No metadata — keep as-is
-                    append_chunk(full)
-
-                # reset CREATE state
-                in_create = False
-                current_table = None
-                buffer = ""
-
-    # Update state
-    state["current_schema"] = current_schema
-    state["in_create"] = in_create
-    state["current_table"] = current_table
-    state["buffer"] = buffer
-    state["skip_for_table"] = skip_for_table
-
-    return "".join(out_lines)
-
-
-# --- Main stream processing ---------------------------------------------------
+    return stmt
 
 
 def process_dump_stream(
@@ -464,188 +399,256 @@ def process_dump_stream(
     prepend_file=None,
 ):
     """
-    Stream-process input dump:
+    Single-pass stream-processing:
 
-    - write a header line and optional USE `db_name`; at the very top
-    - read line by line
-    - for each '/*!<digits>' block, read until its matching '*/'
-      (across multiple lines, with nested '/* ... */' support)
-    - if version < threshold: unwrap (emit only inner content)
-    - else: keep the whole comment as-is
-    - optionally enhance CREATE TABLE statements using table_meta
-    - optionally strip DROP* statements when no_drop is True
-    - write everything to out_path
-    - print progress to stderr
+      1) Optionally write USE `db_name`; and prepend_file to out_path.
+      2) Read the input dump once, chunk by chunk.
+      3) Inside each chunk:
+           - Remove legacy versioned comments /*!<digits> ... */
+             (for versions < version_threshold), preserving important SQL.
+           - Feed cleaned text into a statement builder that:
+               * Splits on ';' boundaries,
+               * Applies no_drop / time_zone fix / normalize_create_table,
+               * Writes final SQL to out_path.
+      4) At the end, flush the remaining partial statement (if any).
     """
     if table_meta is None:
         table_meta = {}
 
-    total_size = os.path.getsize(in_path)
-    processed_bytes = 0
-    last_percent_reported = -1.0
+    file_size = os.path.getsize(in_path)
+    tenth = max(file_size // 100, 1)
 
-    sys.stderr.write(
-        "Removing MySQL compatibility comments from '{0}' ({1:,} bytes)...\n".format(in_path, total_size)
-    )
+    with open(in_path, "r", encoding="utf-8", errors="replace") as fin, open(
+        out_path,
+        "w",
+        encoding="utf-8",
+        errors="replace",
+    ) as fout:
+        # Optional "USE `db_name`;"
+        if db_name:
+            fout.write(f"USE `{db_name}`;\n\n")
 
-    # State for CREATE TABLE enhancement
-    create_state = {
-        "current_schema": default_schema,
-        "in_create": False,
-        "current_table": None,
-        "buffer": "",
-        "skip_for_table": set(),
-    }
-
-    def write_out(chunk):
-        """Write chunk to fout, optionally enhancing CREATE TABLE,
-        normalizing time_zone and, if requested, stripping DROP* statements."""
-        if not chunk:
-            return
-        enhanced = enhance_create_table(chunk, create_state, table_meta, default_schema)
-        # Normalize SET time_zone = 'UTC' to SET time_zone = '+00:00'
-        enhanced = replace_utc_time_zone(enhanced)
-
-        if no_drop:
-            # Split into lines (keeping line endings) and drop any line whose first
-            # non-whitespace token is DROP, including versioned comments like
-            # "/*!50001 DROP VIEW ... */".
-            kept_lines = []
-            for line in enhanced.splitlines(True):
-                stripped = line.lstrip()
-                if not stripped:
-                    kept_lines.append(line)
-                    continue
-                if VERSIONED_DROP_STMT_RE.match(stripped):
-                    continue
-                if DROP_STMT_RE.match(stripped):
-                    continue
-                kept_lines.append(line)
-            enhanced = "".join(kept_lines)
-            if not enhanced:
-                return
-
-        fout.write(enhanced)
-
-    with open(in_path, "r", encoding="utf-8", errors="replace") as fin, \
-         open(out_path, "w", encoding="utf-8", errors="replace") as fout:
-
-        fout.write(
-            "-- Dump created with DB migration tools ( "
-            "https://github.com/utilmind/MySQL-migration-tools )\n\n"
-        )
-
-        # Optionally prepend external SQL file right after the header line
+        # Optional prepend file (e.g. users & grants)
         if prepend_file:
-            sys.stderr.write(
-                "Prepending file '{0}' at the top of the dump...\n".format(prepend_file)
-            )
             with open(prepend_file, "r", encoding="utf-8", errors="replace") as pf:
                 prepend_content = pf.read()
-            if prepend_content:
-                fout.write(prepend_content)
-                # Ensure the prepend block ends with a newline
-                if not prepend_content.endswith(("\n", "\r")):
-                    fout.write("\n")
-                fout.write("\n")  # extra separator after prepend block
+            fout.write(prepend_content)
+            if prepend_content and not prepend_content.endswith("\n"):
+                fout.write("\n")
 
-        if db_name:
-            # If a database name is provided, also select it explicitly.
-            fout.write("\nUSE `{0}`;\n\n".format(db_name))
+        # --- State for comment removal ---
+        buffer = []
+        in_version_comment = False
+        in_regular_comment = False
+        nested_comment_depth = 0
 
-        while True:
-            line = fin.readline()
-            if not line:
-                break  # EOF
+        # --- State for statement assembly on cleaned SQL ---
+        stmt_buffer = []
 
-            processed_bytes += len(line.encode("utf-8", errors="replace"))
-            last_percent_reported = report_progress(
-                processed_bytes,
-                total_size,
-                last_percent_reported,
-            )
+        def emit_statement(stmt):
+            """
+            Apply all statement-level transformations and write to fout.
+            """
+            if not stmt:
+                return
 
-            # We may modify 'line' as we consume versioned comments
-            pos = 0
+            # Optionally skip DROP statements
+            if no_drop:
+                upper = stmt.strip().upper()
+                if upper.startswith("DROP TABLE") or upper.startswith("DROP DATABASE"):
+                    return
+
+            # Fix time zone literal if needed
+            stmt2 = remove_time_zone_utc_literal(stmt)
+
+            # Normalize CREATE TABLE using metadata
+            upper_stmt = stmt2.strip().upper()
+            if upper_stmt.startswith("CREATE TABLE"):
+                stmt_no_semicolon = stmt2.rstrip().rstrip(";")
+                stmt_no_semicolon = normalize_create_table(
+                    stmt_no_semicolon,
+                    table_meta,
+                    default_schema=default_schema,
+                )
+                stmt2 = stmt_no_semicolon + ";\n"
+
+            fout.write(stmt2)
+
+        def handle_clean_text(text):
+            """
+            Accept a chunk of already-cleaned SQL text (without legacy comments),
+            accumulate it into stmt_buffer, and whenever we see ';',
+            emit full statements.
+            """
+            nonlocal stmt_buffer
+            if not text:
+                return
+
+            stmt_buffer.append(text)
+            buf = "".join(stmt_buffer)
+
             while True:
-                idx = line.find("/*!", pos)
+                idx = buf.find(";")
                 if idx == -1:
-                    # No more versioned comments in this line/tail
-                    write_out(line[pos:])
                     break
+                # Statement includes the semicolon
+                stmt = buf[: idx + 1]
+                emit_statement(stmt)
+                buf = buf[idx + 1 :]
 
-                # Check that we actually have digits after /*! (versioned comment)
-                j = idx + 3
-                while j < len(line) and line[j].isdigit():
-                    j += 1
-                if j == idx + 3:
-                    # Not a "/*!<digits>" pattern; treat as normal text up to "/*!"
-                    write_out(line[pos:idx + 3])
-                    pos = idx + 3
-                    continue
+            stmt_buffer = [buf] if buf else []
 
-                # We have '/*!<digits>' starting at idx.
-                # Collect the full comment block (which may span multiple lines).
-                comment = line[idx:]
+        def flush_buffer():
+            """
+            Flush the comment-removal buffer into the statement builder.
+            """
+            if buffer:
+                handle_clean_text("".join(buffer))
+                buffer.clear()
 
-                while True:
-                    end_pos, digits_end = find_conditional_end(comment)
-                    if end_pos is not None:
+        processed_bytes = 0
+        last_progress = 0
+
+        print(
+            "Removing MySQL compatibility comments from '{0}' ({1:,} bytes)...".format(
+                in_path, file_size
+            )
+        )
+
+        # --- Main streaming loop: remove comments + build statements ---
+        while True:
+            chunk = fin.read(8192)
+            if not chunk:
+                break
+
+            processed_bytes += len(chunk)
+
+            while chunk:
+                if not in_version_comment and not in_regular_comment:
+                    idx = chunk.find("/*")
+                    if idx == -1:
+                        buffer.append(chunk)
                         break
 
-                    # Need more data (comment not closed yet)
-                    next_line = fin.readline()
-                    if not next_line:
-                        # EOF inside comment - just output what we have and exit
-                        write_out(line[pos:idx])
-                        write_out(comment)
-                        # ensure final progress
-                        last_percent_reported = report_progress(
-                            total_size,
-                            total_size,
-                            last_percent_reported,
-                        )
-                        sys.stderr.write(" done.\n")
-                        sys.stderr.flush()
-                        return
+                    buffer.append(chunk[:idx])
+                    rest = chunk[idx:]
 
-                    processed_bytes += len(next_line.encode("utf-8", errors="replace"))
-                    last_percent_reported = report_progress(
-                        processed_bytes,
-                        total_size,
-                        last_percent_reported,
-                    )
-                    comment += next_line
+                    if rest.startswith("/*!"):
+                        end_pos, _ = find_conditional_end(rest)
 
-                # At this point we have a full '/*!<digits> ... */' in 'comment'
-                version_str = comment[3:digits_end]
-                try:
-                    version = int(version_str)
-                except ValueError:
-                    version = 0
+                        if end_pos is None:
+                            # Legacy comment not closed in this chunk, keep text
+                            # (we will handle at the next chunk).
+                            in_version_comment = True
+                            buffer.append(rest)
+                            chunk = ""
+                        else:
+                            comment = rest[: end_pos + 2]
+                            remainder = rest[end_pos + 2 :]
 
-                inner = comment[digits_end:end_pos]   # content inside the comment
-                tail = comment[end_pos + 2:]          # what follows after '*/' (could be ';;' etc.)
+                            version_number = extract_version_number(comment)
+                            if (
+                                version_number is not None
+                                and version_number < version_threshold
+                            ):
+                                inner = strip_version_from_comment_text(comment)
+                                buffer.append(inner)
+                            else:
+                                buffer.append(comment)
 
-                # Write everything before the comment from the original 'line'
-                write_out(line[pos:idx])
+                            chunk = remainder
+                    else:
+                        # Regular /* ... */ block comment (non-versioned)
+                        end_pos = rest.find("*/")
+                        if end_pos == -1:
+                            in_regular_comment = True
+                            nested_comment_depth = 1
+                            buffer.append(rest)
+                            chunk = ""
+                        else:
+                            buffer.append(rest[: end_pos + 2])
+                            chunk = rest[end_pos + 2 :]
 
-                # Decide whether to unwrap or keep the comment
-                if version < version_threshold:
-                    # Unwrap: emit only the inner content
-                    write_out(inner)
+                elif in_version_comment:
+                    # Continue until we see the closing "*/"
+                    end_pos = chunk.find("*/")
+                    if end_pos == -1:
+                        buffer.append(chunk)
+                        chunk = ""
+                    else:
+                        comment_part = chunk[: end_pos + 2]
+                        comment = buffer.pop() + comment_part
+
+                        version_number = extract_version_number(comment)
+                        if (
+                            version_number is not None
+                            and version_number < version_threshold
+                        ):
+                            inner = strip_version_from_comment_text(comment)
+                            buffer.append(inner)
+                        else:
+                            buffer.append(comment)
+
+                        in_version_comment = False
+                        chunk = chunk[end_pos + 2 :]
+
                 else:
-                    # Keep the whole comment block as-is
-                    write_out(comment[:end_pos + 2])
+                    # We are inside a regular (non-versioned) block comment
+                    i = 0
+                    n = len(chunk)
+                    while i < n - 1:
+                        pair = chunk[i : i + 2]
+                        if pair == "/*":
+                            nested_comment_depth += 1
+                            i += 2
+                        elif pair == "*/":
+                            nested_comment_depth -= 1
+                            i += 2
+                            if nested_comment_depth == 0:
+                                in_regular_comment = False
+                                i_rem = i
+                                buffer.append(chunk[:i_rem])
+                                chunk = chunk[i_rem:]
+                                break
+                        else:
+                            i += 1
+                    else:
+                        buffer.append(chunk)
+                        chunk = ""
 
-                # Now we continue processing the tail of the comment
-                line = tail
-                pos = 0
+            # Flush cleaned text from comment-filter buffer into statement builder
+            flush_buffer()
 
-    # Final 100% report and newline
-    last_percent_reported = report_progress(total_size, total_size, last_percent_reported)
-    sys.stderr.write(" done.\n")
-    sys.stderr.flush()
+            if processed_bytes - last_progress >= tenth:
+                pct = min(int(processed_bytes * 100 / file_size), 100)
+                print(f"\r {pct:>3.1f}%...", end="", flush=True)
+                last_progress = processed_bytes
+
+        # End of file: final flush
+        flush_buffer()
+        print("\r100.0%... done.")
+
+        # If there is a final partial statement without ';', process it too
+        if stmt_buffer:
+            stmt = "".join(stmt_buffer)
+            if stmt.strip():
+                if no_drop:
+                    upper = stmt.strip().upper()
+                    if upper.startswith("DROP TABLE") or upper.startswith(
+                        "DROP DATABASE"
+                    ):
+                        return
+                stmt = remove_time_zone_utc_literal(stmt)
+                upper_stmt = stmt.strip().upper()
+                if upper_stmt.startswith("CREATE TABLE"):
+                    stmt_no_semicolon = stmt.rstrip().rstrip(";")
+                    stmt_no_semicolon = normalize_create_table(
+                        stmt_no_semicolon,
+                        table_meta,
+                        default_schema=default_schema,
+                    )
+                    stmt = stmt_no_semicolon + ";\n"
+                fout.write(stmt)
 
 
 def main():
@@ -661,19 +664,14 @@ def main():
         dest="db_name",
         help=(
             "Optional database name to prepend a 'USE `DB_NAME`;' statement at the "
-            "top of the output dump. If not provided and the input dump does not "
-            "contain any USE statement, you will be prompted for a database name "
-            "when running in an interactive terminal."
+            "top of the output dump."
         ),
     )
     parser.add_argument(
         "--no-drop",
-        action="store_true",
         dest="no_drop",
-        help=(
-            "If set, strip any DROP* statements from the output, including "
-            "versioned comments like '/*!50001 DROP ... */'."
-        ),
+        action="store_true",
+        help="If set, DROP TABLE and DROP DATABASE statements are skipped.",
     )
     parser.add_argument(
         "--prepend-file",
@@ -710,6 +708,7 @@ def main():
     no_drop = bool(args.no_drop)
     prepend_file = args.prepend_file
 
+    # Validate output path early, so we fail fast on empty or invalid output
     if not out_path:
         print(
             "Output file path is empty. "
@@ -729,33 +728,6 @@ def main():
     if not os.path.isfile(in_path):
         print("Input file not found: {0}".format(in_path), file=sys.stderr)
         sys.exit(1)
-
-    # If no explicit db_name is provided, check whether the dump already selects
-    # a database via a USE `db`; statement. If it does not, we may ask the user
-    # which database should be used (interactive mode only).
-    if not db_name:
-        has_use = dump_has_use_statement(in_path)
-        if not has_use:
-            if sys.stdin.isatty():
-                # Explain the situation to the user (to stderr, to not pollute stdout).
-                sys.stderr.write(
-                    "This dump does not select any database.\n"
-                    "Please provide a database name to import data into a specific database.\n"
-                    "Or leave it blank and press Enter if you want to skip database selection.\n"
-                )
-                try:
-                    user_db = input("Database name (leave blank to skip): ").strip()
-                except EOFError:
-                    user_db = ""
-                if user_db:
-                    db_name = user_db
-            else:
-                # Non-interactive mode (e.g. cron): just continue without a USE header.
-                sys.stderr.write(
-                    "No USE statement found in the dump and no --db-name was provided. "
-                    "Standard input is not interactive; continuing without selecting a database.\n"
-                )
-
 
     if prepend_file is not None and not os.path.isfile(prepend_file):
         print(

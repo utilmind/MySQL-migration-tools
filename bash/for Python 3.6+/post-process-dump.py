@@ -25,16 +25,21 @@ The script never loads the whole file into memory.
 It reads line by line and only keeps one versioned comment block
 in memory at a time.
 
-Optionally, if a table metadata TSV is provided, it will also
-normalize CREATE TABLE statements to include ENGINE, ROW_FORMAT,
-DEFAULT CHARSET and COLLATE according to the original server
-metadata extracted from information_schema.TABLES.
+Additionally:
+  * Optionally, if a table metadata TSV is provided, normalize
+    CREATE TABLE using metadata from information_schema.TABLES
+    (ENGINE, ROW_FORMAT, DEFAULT CHARSET and COLLATE), according
+    to the original server metadata extracted from information_schema.TABLES.
 
-Optionally provide a database name via the --db-name / --db option.
-In that case the script will prepend the following lines at
-the very top of the output dump:     USE `your_db_name`;
+  * Optionally provide a database name via the --db-name / --db option.
+    In that case the script will prepend the following lines at
+    the very top of the output dump:     USE `your_db_name`;
 
-Optionally strip DROP* statements when --no_drop option used.
+  * Optionally prepend an extra SQL file.
+
+  * Optionally skip DROP TABLE / DROP DATABASE when --no-drop option used.
+
+  * Replace standalone `SET time_zone = 'UTC';` → `SET time_zone = '+00:00';`.
 
 Usage:
     python strip-mysql-compatibility-comments.py \
