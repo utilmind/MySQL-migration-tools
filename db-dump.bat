@@ -408,7 +408,9 @@ if errorlevel 1 (
 
 REM Post-process the dump if requested
 if "%POST_PROCESS_DUMP%"=="1" (
-  set "CLEAN_TARGET=%TARGET%%POST_PROCESS_APPENDIX%.sql"
+  REM Build CLEAN_TARGET as: <path><name><appendix><ext>. E.g. my-dump.sql + .clean => my-dump.clean.sql
+  for %%I in ("%TARGET%") do set "CLEAN_TARGET=%%~dpnI%POST_PROCESS_APPENDIX%%%~xI"
+
   echo Post-processing dump '%TARGET%' into '!CLEAN_TARGET!'...
   %POST_PROCESSOR% --db-name "%DBNAME%" "%TARGET%" "!CLEAN_TARGET!" "%TABLE_SCHEMAS%"
   if errorlevel 1 (
