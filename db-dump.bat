@@ -397,10 +397,11 @@ if "%TARGET%"=="" (
 )
 
 echo --- Dumping database '%DBNAME%' to '%TARGET%'...
-
-REM Run mysqldump
+REM Alternatively we could specify --result-file="%TARGET%", but we want error log anyway.
 "%SQLBIN%%SQLDUMP%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %COMMON_OPTS% "%DBNAME%" 1>> "%TARGET%" 2>> "%LOG%"
 if errorlevel 1 (
+  REM These messages are good to search, so append the following line %LOG% to log...
+  echo [%DATE% %TIME%] ERROR dumping database '%DBNAME%' >> "%LOG%"
   echo [ERROR] Failed to dump database '%DBNAME%'. See log: "%LOG%"
   endlocal
   goto :EOF
@@ -432,10 +433,17 @@ REM ================== AFTER DUMPS ==================
 :after_dumps
 del "%TABLE_SCHEMAS%" 2>nul
 
+REM ==== Summary about log file (check, whether %LOG% is empty or not) ====
+set "LOGSIZE=0"
 if exist "%LOG%" (
-  echo Some errors were recorded in: %LOG%
+  for %%A in ("%LOG%") do set "LOGSIZE=%%~zA"
+)
+
+if %LOGSIZE% GTR 0 (
+  echo Some errors or warnings were recorded in: %LOG%
 ) else (
   echo No errors recorded.
+  del "%LOG%" >nul 2>&1
 )
 
 :end
