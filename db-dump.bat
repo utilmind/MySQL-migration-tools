@@ -243,50 +243,63 @@ if "%~1"=="" goto :after_args
 
     set "ARG=%~1"
 
-    REM --ONE or --ONE=filename (case-insensitive)
-    if /I "!ARG:~0,6!"=="--ONE=" (
-      set "ONE_MODE=1"
-      set "ONE_TARGET=!ARG:~6!"
+    REM --ONE [optional-filename]
+    if /I "%ARG%"=="--ONE" (
+        set "ONE_MODE=1"
 
-      if not "!ONE_TARGET!"=="" (
-        REM If user specified an absolute / rooted path, use it as-is
-        if "!ONE_TARGET:~1,1!"==":" (
-          REM Drive letter, e.g. D:\path\file.sql
-          set "OUTFILE=!ONE_TARGET!"
-        ) else if "!ONE_TARGET:~0,1!"=="\" (
-          REM Rooted path like \path\file.sql
-          set "OUTFILE=!ONE_TARGET!"
-        ) else if "!ONE_TARGET:~0,1!"=="/" (
-          REM Rooted path with forward slash
-          set "OUTFILE=!ONE_TARGET!"
-        ) else (
-          REM Otherwise treat as a filename inside OUTDIR
-          set "OUTFILE=%OUTDIR%\!ONE_TARGET!"
+        REM Check if next argument looks like a filename (not empty and not another option)
+        if not "%~2"=="" (
+            set "NEXT=%~2"
+            if /I not "!NEXT:~0,1!"=="-" if /I not "!NEXT:~0,1!"=="/" (
+                REM Decide how to build OUTFILE from NEXT
+                if "!NEXT:~1,1!"==":" (
+                    REM Absolute path like D:\path\file.sql
+                    set "OUTFILE=!NEXT!"
+                ) else if "!NEXT:~0,1!"=="\" (
+                    REM Rooted path like \path\file.sql
+                    set "OUTFILE=!NEXT!"
+                ) else if "!NEXT:~0,1!"=="/" (
+                    REM Rooted path like /path/file.sql
+                    set "OUTFILE=!NEXT!"
+                ) else (
+                    REM Otherwise treat as a filename inside OUTDIR
+                    set "OUTFILE=%OUTDIR%\!NEXT!"
+                )
+                REM We consumed this extra argument as a filename
+                shift
+            )
         )
-      )
 
-    ) else if /I "!ARG!"=="--ONE" (
-      REM Simple --ONE without explicit filename
-      set "ONE_MODE=1"
+        REM Consume the --ONE itself
+        shift
+        goto :parse_args
+    )
 
     REM Disable users & grants export
-    ) else if /I "!ARG!"=="--NO-USERS" (
-      set "EXPORT_USERS_AND_GRANTS=0"
-    ) else if /I "!ARG!"=="--NO-USER" (
-      set "EXPORT_USERS_AND_GRANTS=0"
+    if /I "%ARG%"=="--NO-USERS" (
+        set "EXPORT_USERS_AND_GRANTS=0"
+        shift
+        goto :parse_args
+    )
+
+    if /I "%ARG%"=="--NO-USER" (
+        set "EXPORT_USERS_AND_GRANTS=0"
+        shift
+        goto :parse_args
+    )
 
     REM Everything else is treated as a database name
-    ) else (
-      if defined DBNAMES (
+    if defined DBNAMES (
         set "DBNAMES=%DBNAMES% %~1"
-      ) else (
+    ) else (
         set "DBNAMES=%~1"
-      )
     )
 
     shift
     goto :parse_args
+
 :after_args
+
 
 REM === SHOW PLANNED ACTION BEFORE ASKING FOR PASSWORD ===
 for %%I in ("%OUTFILE%") do set "OUTFILE_FULL_PATH=%%~fI"
