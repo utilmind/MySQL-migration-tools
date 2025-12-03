@@ -354,13 +354,6 @@ if "%ALL_DB_MODE%"=="1" (
 )
 echo.
 
-REM If started without any CLI arguments and password was not requested interactively,
-REM ask user for confirmation before starting the dump.
-if "%NO_ARGS%"=="1" if "%PASS_WAS_PROMPTED%"=="0" (
-  pause
-  echo.
-)
-
 REM Build comma-separated, quoted database list for SQL IN (...)
 set "DBNAMES_IN="
 
