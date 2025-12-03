@@ -710,6 +710,22 @@ def main():
     no_drop = bool(args.no_drop)
     prepend_file = args.prepend_file
 
+    if not out_path:
+        print(
+            "Output file path is empty. "
+            "Make sure the second positional argument is a valid file path.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    out_dir = os.path.dirname(out_path)
+    if out_dir and not os.path.isdir(out_dir):
+        print(
+            "Directory for output file does not exist: {0}".format(out_dir),
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     if not os.path.isfile(in_path):
         print("Input file not found: {0}".format(in_path), file=sys.stderr)
         sys.exit(1)
