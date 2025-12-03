@@ -248,8 +248,14 @@ if "%~1"=="" goto :after_args
     REM --ONE in any position, case insensitive
     if /I "%~1"=="--ONE" (
       set "ONE_MODE=1"
+      REM Disable users and grants export when --no-users OR --no-user is specified
     ) else if /I "%~1"=="--NO-USERS" (
-      REM Disable users and grants export when --no-users is specified
+      set "EXPORT_USERS_AND_GRANTS=0"
+    ) else if /I "%~1"=="--NO-USER" (
+      set "EXPORT_USERS_AND_GRANTS=0"
+    ) else if /I "%~1"=="--NOUSERS" (
+      set "EXPORT_USERS_AND_GRANTS=0"
+    ) else if /I "%~1"=="--NOUSER" (
       set "EXPORT_USERS_AND_GRANTS=0"
     ) else (
       REM All others are db names
@@ -403,16 +409,17 @@ if errorlevel 1 (
 REM Post-process the dump if requested
 if "%POST_PROCESS_DUMP%"=="1" (
   set "CLEAN_TARGET=%TARGET%%POST_PROCESS_APPENDIX%.sql"
-  echo Post-processing dump '%TARGET%' into '%CLEAN_TARGET%'...
-  %POST_PROCESSOR% --db-name "%DBNAME%" "%TARGET%" "%CLEAN_TARGET%" "%TABLE_SCHEMAS%" 1>> "%LOG%" 2>&1
+  echo Post-processing dump '%TARGET%' into '!CLEAN_TARGET!'...
+  %POST_PROCESSOR% --db-name "%DBNAME%" "%TARGET%" "!CLEAN_TARGET!" "%TABLE_SCHEMAS%" 1>> "%LOG%" 2>&1
   if errorlevel 1 (
     echo [WARN] Post-processing failed for '%TARGET%'. Keeping original dump.
-    del "%CLEAN_TARGET%" 2>nul
+    del "!CLEAN_TARGET!" 2>nul
   ) else (
-    move /Y "%CLEAN_TARGET%" "%TARGET%" >nul
+    move /Y "!CLEAN_TARGET!" "%TARGET%" >nul
     echo Post-processing completed for '%TARGET%'.
   )
 )
+exit
 
 endlocal
 goto :EOF
