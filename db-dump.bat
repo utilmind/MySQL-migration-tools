@@ -14,12 +14,10 @@ REM      - Detects non-system databases on the server.
 REM      - Dumps all or selected databases either:
 REM          * into separate .sql files per database, or
 REM          * into a single combined dump file.
-REM      - Supports optional flags to control dump modes
-REM        (e.g. single-file vs per-database).
-REM      - Uses configurable client and dump executables
-REM        (mysql.exe / mysqldump.exe or mariadb.exe / mariadb-dump.exe).
-REM      - Integrates with dump-users-and-grants.bat to include
-REM        users and privileges in the migration.
+REM      - Optionally exports MySQL users and grants into a separate file and
+REM        prepends it to the FULL dump.
+REM      - Optionally post-processes each dump with Python to remove old
+REM        versioned compatibility comments and normalize CREATE TABLE.
 REM
 REM  Usage (examples):
 REM      db-dump.bat
@@ -34,8 +32,11 @@ REM
 REM =================================================================================================
 
 REM ================== CONFIG ==================
-REM Path to bin folder containing mysql/mysqldump or mariadb/mariadb-dump. (Optionally. Something like "SQLBIN=C:\Program Files\MariaDB 10.5\bin".)
-REM ATTN! If you have MULTIPLE INSTALLATIONS of MySQL/MariaDB on your computer, please specify the exact path to the working version you are dumping from!
+REM Path to bin folder containing mysql/mysqldump or mariadb/mariadb-dump (optional).
+REM If empty, "mysql.exe" / "mysqldump.exe" (or "mariadb.exe" / "mariadb-dump.exe") are used from PATH.
+REM If set, slash "\" will be appended automatically. Something like "SQLBIN=C:\Program Files\MariaDB 10.5\bin".)
+REM ATTN! If you have MULTIPLE INSTALLATIONS of MySQL/MariaDB on this machine, it's strongly recommended
+REM       to specify the exact path to the working version you are dumping from!
 set "SQLBIN="
 REM Run "mysql --version" to figure out the version of your default mysql.exe
 REM set "SQLCLI=mariadb.exe"
@@ -60,11 +61,12 @@ REM If you want to automatically export users/grants, set this to 1 and ensure t
 set "EXPORT_USERS_AND_GRANTS=1"
 
 REM Dump post-processor tool (to remove MySQL compatibility comments + add missing options to the `CREATE TABLE` statements).
-REM     * The MySQL Dump put compatibility comments for earlier versions. E.g `CREATE TRIGGER` is not supported by ancient MySQL versions.
+REM     * The MySQL Dump put compatibility comments for earlier MySQL versions (or potentially unsupported features).
+REM       E.g `CREATE TRIGGER` is not supported by ancient MySQL versions.
 REM       And the MySQL Dump wraps those instructons in to magic comments, like /*!50003 CREATE*/ /*!50017 DEFINER=`user`@`host`*/ /*!50003 TRIGGER ... END */,
 REM       making issues with regular multiline comments /* ... */ within the triggers.
-REM       We can remove those compatibility comments targeted for some legacy versions (e.g. all MySQL versions lower than 8.0), to keep the important developers comments in the code.
-REM     * Solves issues with importing tables to the servers with different default collations, by supplying `CREATE TABLE` statements with missing instructions.
+REM       We can remove those compatibility comments targeted for the legacy versions (numbers less than 5.6 or 8.0), to keep the important developers comments in the code.
+REM     * Solves issues with importing tables to the servers with other database defaults (collations / charsets) by supplying `CREATE TABLE` statements with missing instructions.
 REM     * Prepends the single-database dumps with USE `db_name`; statement.
 REM     * Replace any standalone "SET time_zone = 'UTC';" statement with "SET time_zone = '+00:00';".
 REM
@@ -210,6 +212,7 @@ echo Preparing database dump from %DB_HOST%:%DB_PORT% on behalf of '%DB_USER%'..
 if "%DB_PASS%"=="" (
   echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^) or press Ctrl+C to terminate.
   set /p "DB_PASS=> "
+  set "PASS_WAS_PROMPTED=1"
   echo.
 )
 
@@ -222,6 +225,9 @@ if "%~1"=="" goto :after_args
     REM --ONE in any position, case insensitive
     if /I "%~1"=="--ONE" (
       set "ONE_MODE=1"
+    ) else if /I "%~1"=="--NO-USERS" (
+      REM Disable users and grants export when --no-users is specified
+      set "EXPORT_USERS_AND_GRANTS=0"
     ) else (
       REM All others are db names
       if defined DBNAMES (
@@ -255,8 +261,8 @@ if "%DBNAMES%" NEQ "" goto :mode_selection
 
 echo === Getting database list from %DB_HOST%:%DB_PORT% ...
 "%SQLBIN%%SQLCLI%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% -N -B -e "SHOW DATABASES" > "%DBLIST%"
-REM AK: Alternatively we could use `SELECT DISTINCT TABLE_SCHEMA FROM information_schema.TABLES WHERE TABLE_SCHEMA NOT IN ("information_schema", "performance_schema", "mysql", "sys");`,
 REM     this way could exclude system tables immediately, but this doesn't exports *empty* databases (w/o tables yet), which still could be important. So let's keep canonical SHOW DATABASES, then filter it.
+REM AK: Alternatively we could use `SELECT DISTINCT TABLE_SCHEMA FROM information_schema.tables WHERE TABLE_SCHEMA NOT IN ("information_schema", "performance_schema", "mysql", "sys");`,
 if errorlevel 1 (
   echo ERROR: Could not retrieve database list.
   goto :end
@@ -277,9 +283,18 @@ if "!DBNAMES!"=="" (
   goto :after_dumps
 )
 
+set "ALL_DB_MODE=1"
+
 :mode_selection
 echo Databases to dump: !DBNAMES!
 echo.
+
+REM If started without any CLI arguments and password was not requested interactively,
+REM ask user for confirmation before starting the dump.
+if "%NO_ARGS%"=="1" if "%PASS_WAS_PROMPTED%"=="0" (
+  pause
+  echo.
+)
 
 REM Build comma-separated, quoted database list for SQL IN (...)
 set "DBNAMES_IN="
@@ -331,7 +346,7 @@ echo.
 goto :after_dumps
 
 
-REM ================== MODE 2: ALL DATABASES INTO ONE FILE ==================
+REM ================== MODE 2: ALL DATABASES IN ONE FILE ==================
 :all_in_one
 echo === Dumping ALL NON-SYSTEM databases into ONE file (excluding mysql, information_schema, performance_schema, sys) ===
 
