@@ -228,37 +228,24 @@ if not defined SQLDUMP (
 )
 
 
-REM Ask for password only if DB_PASS is empty
+REM Show general connection info first
 echo Preparing database dump from %DB_HOST%:%DB_PORT% on behalf of '%DB_USER%'...
-if "%DB_PASS%"=="" (
-  echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^) or press Ctrl+C to terminate.
-  set /p "DB_PASS=> "
-  set "PASS_WAS_PROMPTED=1"
-  echo.
-)
 
-REM Prepare log directory and remove previous log, if exists.
-if not exist "%OUTDIR%" mkdir "%OUTDIR%"
-if exist "%LOG%" del "%LOG%"
-
-
-REM === PARSE CLI ARGUMENTS ===
+REM === PARSE CLI ARGUMENTS BEFORE ANY USER INPUT ===
 :parse_args
 if "%~1"=="" goto :after_args
-    REM --ONE in any position, case insensitive
+    REM --ONE in any position (case-insensitive)
     if /I "%~1"=="--ONE" (
       set "ONE_MODE=1"
-      REM Disable users and grants export when --no-users OR --no-user is specified
+
+    REM Disable users & grants export
     ) else if /I "%~1"=="--NO-USERS" (
       set "EXPORT_USERS_AND_GRANTS=0"
     ) else if /I "%~1"=="--NO-USER" (
       set "EXPORT_USERS_AND_GRANTS=0"
-    ) else if /I "%~1"=="--NOUSERS" (
-      set "EXPORT_USERS_AND_GRANTS=0"
-    ) else if /I "%~1"=="--NOUSER" (
-      set "EXPORT_USERS_AND_GRANTS=0"
+
+    REM Everything else is treated as a database name
     ) else (
-      REM All others are db names
       if defined DBNAMES (
         set "DBNAMES=%DBNAMES% %~1"
       ) else (
@@ -269,6 +256,44 @@ if "%~1"=="" goto :after_args
     shift
     goto :parse_args
 :after_args
+
+REM === SHOW PLANNED ACTION BEFORE ASKING FOR PASSWORD ===
+for %%I in ("%OUTFILE%") do set "OUTFILE_FULL_PATH=%%~fI"
+for %%I in ("%OUTDIR%") do set "OUTDIR_FULL_PATH=%%~fI"
+if "%DBNAMES%"=="" (
+  REM No databases provided in CLI -> will dump ALL non-system databases
+  if "%ONE_MODE%"=="1" (
+    echo Planned action:
+    echo   Dump ALL non-system databases from %DB_HOST%:%DB_PORT% into ONE file:
+    echo     "%OUTFILE_FULL_PATH%"
+  ) else (
+    echo Planned action:
+    echo   Dump ALL non-system databases from %DB_HOST%:%DB_PORT% into separate files to the following directory:
+    echo     "%OUTDIR_FULL_PATH%"
+  )
+) else (
+  REM Databases explicitly provided by the user
+  if "%ONE_MODE%"=="1" (
+    echo Planned action:
+    echo   Dump databases %DBNAMES% from %DB_HOST%:%DB_PORT% into ONE file:
+    echo     "%OUTFILE_FULL_PATH%"
+  ) else (
+    echo Planned action:
+    echo   Dump databases %DBNAMES% from %DB_HOST%:%DB_PORT% into separate files in:
+    echo     "%OUTDIR%"
+  )
+)
+echo.
+
+REM === ONLY NOW ASK FOR PASSWORD (IF NOT SET IN SCRIPT) ===
+if "%DB_PASS%"=="" (
+  echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^) or press Ctrl+C to terminate.
+  set /p "DB_PASS=> "
+  echo.
+)
+
+REM Create output directory after showing plan + reading password
+if not exist "%OUTDIR%" mkdir "%OUTDIR%"
 
 
 REM Optionally export users and grants via the separate script.
