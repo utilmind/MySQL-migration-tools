@@ -559,6 +559,9 @@ systemctl start mariadb.service
 
 ## 🧰 To-Do
 
+- Check locked tables (at least in bash-version, although Windows is good too) and warn user about locks before dump. With prompt to continue or not, if not running by crontab.
+- (Maybe) Prepare stand-alone script that will monitor database server for locks and will send email and/or telegram message (remember about limit of telegram message length) if some tables are locked too long.
+- (If above will be implemented) Implement an option that will automatically kill processes that hold a locks.
 - Detect unsupported COLLATION types in the post-processor script. Display warning (at least) if unsupported collations are detected. Auto-replace unsupported collations if special CLI-option is used.
 - Selective user/grant extraction. (When dumping selected databases into separate files, include to dump only the relevant users/grants. We can detect users of only specific databases.)
 - SQL dialect converter (MySQL → PostgreSQL, Oracle, etc.) Yes, this is can be complicated for automatic conversions in stored procedures and tiggers, but still possible. Maybe using AI.
