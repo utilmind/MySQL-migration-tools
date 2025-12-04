@@ -52,13 +52,9 @@ set "WORK_SQL=%SRC_FILE%"
 set "TEMP_SQL_DIR="
 
 REM Handle archives: .rar via WinRAR/UnRAR, .zip/.gz via 7-Zip (7z.exe/7za.exe)
-if /I "%SRC_EXT%"==".rar" (
-    call :ExtractFromRar || goto :hasErrors
-) else if /I "%SRC_EXT%"==".zip" (
-    call :ExtractWith7z || goto :hasErrors
-) else if /I "%SRC_EXT%"==".gz" (
-    call :ExtractWith7z || goto :hasErrors
-)
+if /I "%SRC_EXT%"==".rar"  call :ExtractFromRar || goto :hasErrors
+if /I "%SRC_EXT%"==".zip"  call :ExtractWith7z  || goto :hasErrors
+if /I "%SRC_EXT%"==".gz"   call :ExtractWith7z  || goto :hasErrors
 
 REM At this point, WORK_SQL points to the .sql file to import
 REM Remove old log if exists.
