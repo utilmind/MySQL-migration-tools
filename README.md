@@ -111,15 +111,17 @@ Usage:
 
 ```
 db-dump.bat                      → dumps all DBs separately
-db-dump.bat --ONE                → all DBs into a single file
-db-dump.bat db1 db2 db3          → dump only selected DBs
-db-dump.bat --ONE db1 db2 db3    → one combined SQL for selected DBs
+db-dump.bat --one                → all DBs into a single file (_db.sql by default)
+db-dump.bat --one=my-dump.sql    → all DBs into a single file with custom name, 'my-dump.sql'
+db-dump.bat db1 db2 db3          → dump only selected databases (in separate dumps, since option --one not used)
+db-dump.bat --one db1 db2 db3    → one combined SQL for selected DBs
+db-dump.bat --one=my-dump.sql --no-users db1 db2 db3    → one combined SQL w/o information about users and grants, only specified databases.
 ```
 
 #### 💡 Notes
 * You can also dump remote hosts (not only database server on local PC), specifying
 the hostname/IP and in the `%HOST%`/`%PORT%` variables.
-* Users and grants are dumped automatically and usually prepended to the overall dump (if not skipped).
+* Users and grants are dumped automatically and usually prepended to the overall dump (if not skipped with configuration settings or `--no-users` option).
 But you can also run stand-alone [`dump-users-and-grants.bat`](dump-users-and-grants.bat) separately to get the list of all non-system users and
 their privileges/grants into SQL file, ready for import into another MySQL/MariaDB database.
 
