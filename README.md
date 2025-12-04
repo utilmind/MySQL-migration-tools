@@ -115,13 +115,13 @@ db-dump.bat --one                → all DBs into a single file (_db.sql by defa
 db-dump.bat --one=my-dump.sql    → all DBs into a single file with custom name, 'my-dump.sql'
 db-dump.bat db1 db2 db3          → dump only selected databases (in separate dumps, since option --one not used)
 db-dump.bat --one db1 db2 db3    → one combined SQL for selected DBs
-db-dump.bat --one=my-dump.sql --no-users db1 db2 db3    → one combined SQL w/o information about users and grants, only specified databases.
+db-dump.bat --one --no-users db1 db2 db3  → one combined SQL w/o information about users and grants, only specified databases.
 ```
 
 #### 💡 Notes
 * You can also dump remote hosts (not only database server on local PC), specifying
 the hostname/IP and in the `%HOST%`/`%PORT%` variables.
-* Users and grants are dumped automatically and usually prepended to the overall dump (if not skipped with configuration settings or `--no-users` option).
+* Users and grants are dumped automatically and usually prepended to the overall dump (if not skipped with `--no-users` option or configuration settings).
 But you can also run stand-alone [`dump-users-and-grants.bat`](dump-users-and-grants.bat) separately to get the list of all non-system users and
 their privileges/grants into SQL file, ready for import into another MySQL/MariaDB database.
 
@@ -559,6 +559,7 @@ systemctl start mariadb.service
 
 ## 🧰 To-Do
 
-- Selective user/grant extraction. (When dumping selected databases, include to dump only the relevant users/grants.)
+- Detect unsupported COLLATION types in the post-processor script. Display warning (at least) if unsupported collations are detected. Auto-replace unsupported collations if special CLI-option is used.
+- Selective user/grant extraction. (When dumping selected databases into separate files, include to dump only the relevant users/grants. We can detect users of only specific databases.)
 - SQL dialect converter (MySQL → PostgreSQL, Oracle, etc.) Yes, this is can be complicated for automatic conversions in stored procedures and tiggers, but still possible. Maybe using AI.
 - (Maybe) add simple garbage collector to remove outdated dumps in Linux version.
