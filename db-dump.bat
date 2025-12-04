@@ -323,7 +323,7 @@ if "%DBNAMES%"=="" (
     echo     "%OUTFILE_FULL_PATH%"
   ) else (
     echo Planned action:
-    echo   Dump databases %DBNAMES% from %DB_HOST%:%DB_PORT% into separate files to the following directory:
+    echo   Dump databases %DBNAMES% from %DB_HOST%:%DB_PORT% into separate file(s) to the following directory:
     echo     "%OUTDIR_FULL_PATH%"
   )
 )
