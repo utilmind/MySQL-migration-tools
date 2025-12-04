@@ -193,7 +193,7 @@ if not defined SEVEN_EXE (
 )
 
 if not defined SEVEN_EXE (
-    echo [FAIL] 7-Zip (7z.exe or 7za.exe) not found in PATH. Cannot extract "%ARCH_SRC%".
+    echo [FAIL] 7-Zip ^(7z.exe or 7za.exe^) not found in PATH. Cannot extract "%ARCH_SRC%".
     endlocal & exit /b 1
 )
 
