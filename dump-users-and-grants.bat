@@ -41,6 +41,7 @@ set "SQLBIN="
 REM Run "mysql --version" to figure out the version of your default mysql.exe
 REM Client executable name: mysql.exe or mariadb.exe / mysqldump.exe or mariadb-dump.exe.
 set "SQLCLI=mysql.exe"
+set "SQLDUMP=mysqldump.exe"
 REM Output folder for users_and_grants.sql
 set "OUTDIR=.\_db-dumps"
 REM Connection params
@@ -50,8 +51,16 @@ set "DB_USER=root"
 REM Password: put real password here, or leave empty to be prompted
 set "DB_PASS="
 
+REM If 1, add --skip-ssl to mysql invocations (ONLY when SSL_CA is empty).
+set "SKIP_SSL=0"
+
+REM Optional: path to a trusted CA bundle (PEM). If set, it overrides SKIP_SSL.
+REM Example (AWS RDS): https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.SSL.html
+set "SSL_CA="
+
+
 REM --------- Override config from arguments if provided ----------
-REM Arg1: SQLBIN, Arg2: DB_HOST, Arg3: DB_PORT, Arg4: DB_USER, Arg5: DB_PASS, Arg6: OUTDIR, Arg7: USERDUMP
+REM Arg1: SQLBIN, Arg2: DB_HOST, Arg3: DB_PORT, Arg4: DB_USER, Arg5: DB_PASS, Arg6: OUTDIR, Arg7: USERDUMP, Arg8: SKIP_SSL, Arg9: SSL_CA
 
 if not "%~1"=="" set "SQLBIN=%~1"
 if not "%~2"=="" set "DB_HOST=%~2"
@@ -60,6 +69,8 @@ if not "%~4"=="" set "DB_USER=%~4"
 if not "%~5"=="" set "DB_PASS=%~5"
 if not "%~6"=="" set "OUTDIR=%~6"
 if not "%~7"=="" set "USERDUMP=%~7"
+if not "%~8"=="" set "SKIP_SSL=%~8"
+if not "%~9"=="" set "SSL_CA=%~9"
 REM ----------------------------------------------------------------
 
 
@@ -108,7 +119,17 @@ chcp 65001 >nul
 
 echo === Exporting users and grants to "%USERDUMP%" ===
 
-"%SQLBIN%%SQLCLI%" -h "%DB_HOST%" -P "%DB_PORT%" -u "%DB_USER%" -p%DB_PASS% -N -B ^
+REM Build SSL-related options. SSL_CA has priority over SKIP_SSL (mutually exclusive).
+set "CONN_SSL_OPTS="
+if not "%SSL_CA%"=="" (
+  set "CONN_SSL_OPTS=--ssl --ssl-ca=""%SSL_CA%"" --ssl-verify-server-cert"
+) else (
+  if "%SKIP_SSL%"=="1" (
+    set "CONN_SSL_OPTS=--skip-ssl"
+  )
+)
+
+"%SQLBIN%%SQLCLI%" -h "%DB_HOST%" -P "%DB_PORT%" -u "%DB_USER%" -p%DB_PASS% %CONN_SSL_OPTS% -N -B ^
   -e "SELECT CONCAT(QUOTE(User),'@',QUOTE(Host)) FROM mysql.user WHERE User<>'' AND User NOT IN ('root','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','mariadb.session','debian-sys-maint','healthchecker','rdsadmin')" >"%USERLIST%" 2>>"%LOG%"
 if errorlevel 1 (
   echo ERROR: Could not retrieve user list. See "%LOG%" for details.
@@ -125,7 +146,7 @@ for /f "usebackq delims=" %%U in ("%USERLIST%") do (
   echo CREATE USER IF NOT EXISTS %%U;>>"%USERDUMP%"
 
   REM Write SHOW GRANTS output to a temporary file. (AK: we could output them, but should add ';' after GRANT string...)
-  "%SQLBIN%%SQLCLI%" -h "%DB_HOST%" -P "%DB_PORT%" -u "%DB_USER%" -p%DB_PASS% -N -B -e "SHOW GRANTS FOR %%U" >"%TMPGRANTS%" 2>>"%LOG%"
+  "%SQLBIN%%SQLCLI%" -h "%DB_HOST%" -P "%DB_PORT%" -u "%DB_USER%" -p%DB_PASS% %CONN_SSL_OPTS% -N -B -e "SHOW GRANTS FOR %%U" >"%TMPGRANTS%" 2>>"%LOG%"
 
   REM Read each GRANT line and append a semicolon
   for /f "usebackq delims=" %%G in ("%TMPGRANTS%") do (
