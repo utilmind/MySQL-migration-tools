@@ -41,7 +41,6 @@ set "SQLBIN="
 REM Run "mysql --version" to figure out the version of your default mysql.exe
 REM Client executable name: mysql.exe or mariadb.exe / mysqldump.exe or mariadb-dump.exe.
 set "SQLCLI=mysql.exe"
-set "SQLDUMP=mysqldump.exe"
 REM Output folder for users_and_grants.sql
 set "OUTDIR=.\_db-dumps"
 REM Connection params
