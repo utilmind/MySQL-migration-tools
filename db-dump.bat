@@ -179,13 +179,10 @@ REM Add certificate verification flag only when the client supports it.
 set "CONN_VERIFY_CERT_OPTS="
 if not "%SSL_CA%"=="" (
   set "MYSQL_HELP_FILE=%TEMP%\mysql_help_%RANDOM%.tmp"
-  "%SQLBIN%%SQLCLI%" --help >"%MYSQL_HELP_FILE%" 2>&1
   findstr /C:"--ssl-verify-server-cert" "%MYSQL_HELP_FILE%" >nul 2>&1
   if not errorlevel 1 (
     set "CONN_VERIFY_CERT_OPTS=--ssl-verify-server-cert"
   )
-  del "%MYSQL_HELP_FILE%" >nul 2>&1
-  set "MYSQL_HELP_FILE="
 )
 
 REM Combined connection options for all SQL tools (mysql + mysqldump).
