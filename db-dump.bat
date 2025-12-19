@@ -60,6 +60,8 @@ set "DB_USER=root"
 REM Password: put real password here, or leave EMPTY to be prompted. Do not expose your password in public!!
 set "DB_PASS="
 
+REM Optional: increase client max_allowed_packet for large rows/BLOBs.
+REM Example values: 64M, 256M, 1G
 REM Get all databases into single SQL-dump: 1 = yes, 0 = no. This option can be overridden (turned on) by `--ONE` parameter
 set "ONE_MODE=0"
 
