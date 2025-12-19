@@ -67,7 +67,7 @@ set "MAX_ALLOWED_PACKET=1024M"
 REM Optional: set the network buffer size for mysqldump in bytes.
 REM This can help when dumping tables with large rows / BLOBs over slow or flaky connections.
 REM Example values: 1048576 (1 MiB), 4194304 (4 MiB)
-set "NET_BUFFER_LENGTH="
+set "NET_BUFFER_LENGTH=4194304"
 
 REM If 1, add --skip-ssl to all mysql/mysqldump invocations (ONLY when SSL_CA is empty).
 REM Default: 0 (SSL is enabled/required if the server enforces it).
