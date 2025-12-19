@@ -530,14 +530,6 @@ if "%ALL_DB_MODE%"=="1" (
 )
 echo.
 
-:mode_selection
-if "%ALL_DB_MODE%"=="1" (
-  echo Dumping ALL databases from %DB_HOST%:%DB_PORT%: !DBNAMES!
-) else (
-  echo Dumping !DBNAMES! from %DB_HOST%:%DB_PORT%
-)
-echo.
-
 REM Build comma-separated, quoted database list for SQL IN (...)
 set "DBNAMES_IN="
 
