@@ -62,6 +62,29 @@ set "DB_PASS="
 
 REM Optional: increase client max_allowed_packet for large rows/BLOBs.
 REM Example values: 64M, 256M, 1G
+set "MAX_ALLOWED_PACKET="
+
+REM Optional: set the network buffer size for mysqldump in bytes.
+REM This can help when dumping tables with large rows / BLOBs over slow or flaky connections.
+REM Example values: 1048576 (1 MiB), 4194304 (4 MiB)
+set "NET_BUFFER_LENGTH="
+
+REM If 1, add --skip-ssl to all mysql/mysqldump invocations (ONLY when SSL_CA is empty).
+REM Default: 0 (SSL is enabled/required if the server enforces it).
+set "SKIP_SSL=0"
+
+REM Optional: path to a trusted CA bundle (PEM). If set, it overrides SKIP_SSL.
+REM Example (AWS RDS):
+REM   1) Download the CA bundle (PEM) from the AWS docs:
+REM      https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.SSL.html
+REM   2) Save it locally, e.g. (PowerShell):
+REM      powershell -NoProfile -Command ^
+REM        "Invoke-WebRequest -Uri 'https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem' -OutFile 'C:\certs\rds-global-bundle.pem'"
+REM   3) Set SSL_CA to that file path, e.g.:
+REM      set "SSL_CA=C:\certs\rds-global-bundle.pem"
+set "SSL_CA="
+
+
 REM Get all databases into single SQL-dump: 1 = yes, 0 = no. This option can be overridden (turned on) by `--ONE` parameter
 set "ONE_MODE=0"
 
@@ -112,6 +135,58 @@ REM Dump options common for all databases
 REM NOTE: These options affect every dump produced by this script.
 REM       Keep them conservative for maximum compatibility.
 set "COMMON_OPTS=--routines --events --triggers --single-transaction --quick"
+REM Connection-related options reused across mysql and mysqldump.
+REM SSL_CA has priority over SKIP_SSL (they are mutually exclusive).
+set "CONN_SSL_OPTS="
+if not "%SSL_CA%"=="" (
+  set "CONN_SSL_OPTS=--ssl --ssl-ca=""%SSL_CA%"""
+) else (
+  if "%SKIP_SSL%"=="1" (
+    set "CONN_SSL_OPTS=--skip-ssl"
+  )
+)
+
+REM Enable compression for remote hosts by default (when DB_HOST is set and not localhost/127.0.0.1).
+set "CONN_COMPRESS_OPTS="
+if not "%DB_HOST%"=="" (
+  if /I not "%DB_HOST%"=="localhost" if /I not "%DB_HOST%"=="127.0.0.1" (
+    set "CONN_COMPRESS_OPTS=--compress"
+  )
+)
+
+REM Optional: raise packet limit for large rows/BLOBs (client-side). Server-side limit must also allow it.
+set "CONN_PACKET_OPTS="
+if not "%MAX_ALLOWED_PACKET%"=="" (
+  set "CONN_PACKET_OPTS=--max-allowed-packet=%MAX_ALLOWED_PACKET%"
+)
+
+REM If requested, set the network buffer size (mysqldump client-side) in bytes.
+REM Only enable this option if mysqldump actually supports it (older builds may not).
+if defined NET_BUFFER_LENGTH (
+    if not "%NET_BUFFER_LENGTH%"=="" (
+        findstr /C:"--net-buffer-length" "%MYSQLDUMP_HELP_FILE%" >nul 2>&1
+        if not errorlevel 1 (
+            set "COMMON_OPTS=%COMMON_OPTS% --net-buffer-length=%NET_BUFFER_LENGTH%"
+        )
+    )
+)
+
+REM Add certificate verification flag only when the client supports it.
+set "CONN_VERIFY_CERT_OPTS="
+if not "%SSL_CA%"=="" (
+  set "MYSQL_HELP_FILE=%TEMP%\mysql_help_%RANDOM%.tmp"
+  "%SQLBIN%%SQLCLI%" --help >"%MYSQL_HELP_FILE%" 2>&1
+  findstr /C:"--ssl-verify-server-cert" "%MYSQL_HELP_FILE%" >nul 2>&1
+  if not errorlevel 1 (
+    set "CONN_VERIFY_CERT_OPTS=--ssl-verify-server-cert"
+  )
+  del "%MYSQL_HELP_FILE%" >nul 2>&1
+  set "MYSQL_HELP_FILE="
+)
+
+REM Combined connection options for all SQL tools (mysql + mysqldump).
+set "CONN_OPTS=%CONN_COMPRESS_OPTS% %CONN_SSL_OPTS% %CONN_VERIFY_CERT_OPTS% %CONN_PACKET_OPTS%"
+
 
 REM --routines/--events/--triggers: include stored routines, events, and triggers.
 REM --single-transaction: take a consistent snapshot without locking tables (InnoDB only).
@@ -138,6 +213,9 @@ set "COMMON_OPTS=%COMMON_OPTS% --hex-blob"
 REM Make dumps more portable between servers (managed MySQL, MariaDB, different versions).
 REM Avoid embedding tablespace directives in CREATE TABLE.
 set "COMMON_OPTS=%COMMON_OPTS% --no-tablespaces"
+
+REM Append connection options (compression/SSL/max_allowed_packet).
+set "COMMON_OPTS=%COMMON_OPTS% %CONN_OPTS%"
 
 REM Do NOT inject SET @@GLOBAL.GTID_PURGED into the dump (safer for imports into existing replicas).
 REM Only enable this option if mysqldump actually supports it (older MySQL/MariaDB may not).
@@ -354,7 +432,7 @@ REM Optionally export users and grants via the separate script.
 REM Important to prepare it in the beginning, to include to the _all_databases_ export.
 if "%EXPORT_USERS_AND_GRANTS%"=="1" (
   REM === Exporting users and grants using dump-users-and-grants.bat ===
-  @call "%~dp0dump-users-and-grants.bat" "%SQLBIN%" "%DB_HOST%" "%DB_PORT%" "%DB_USER%" "%DB_PASS%" "%OUTDIR%" "%USERDUMP%"
+  @call "%~dp0dump-users-and-grants.bat" "%SQLBIN%" "%DB_HOST%" "%DB_PORT%" "%DB_USER%" "%DB_PASS%" "%OUTDIR%" "%USERDUMP%" "%SKIP_SSL%" "%SSL_CA%"
   if not exist "%USERDUMP%" (
     REM echo WARNING: "%USERDUMP%" not found, will create dump with data only, without users/grants.
     goto :end
@@ -364,9 +442,12 @@ if "%EXPORT_USERS_AND_GRANTS%"=="1" (
 REM If DB names are passed as arguments, use them directly.
 REM Otherwise, query server for list of non-system DBs.
 echo Getting database names from server
+if "%DBNAMES%" NEQ "" goto :mode_selection
 
 echo === Getting database list from %DB_HOST%:%DB_PORT% ...
-"%SQLBIN%%SQLCLI%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% -N -B -e "SHOW DATABASES" > "%DBLIST%"
+"%SQLBIN%%SQLCLI%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %CONN_OPTS% -N -B -e "SHOW DATABASES" > "%DBLIST%"
+REM     this way could exclude system tables immediately, but this doesn't exports *empty* databases (w/o tables yet), which still could be important. So let's keep canonical SHOW DATABASES, then filter it.
+REM AK: Alternatively we could use `SELECT DISTINCT TABLE_SCHEMA FROM information_schema.tables WHERE TABLE_SCHEMA NOT IN ("information_schema", "performance_schema", "mysql", "sys");`,
 if errorlevel 1 (
   echo ERROR: Could not retrieve database list.
   goto :end
@@ -470,7 +551,7 @@ for %%D in (!DBNAMES!) do (
 
 REM === Dump default table schemas, to be able to restore everything exactly as on original server ===
 echo Dumping table metadata to '%TABLE_SCHEMAS%'...
-"%SQLBIN%%SQLCLI%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% -N -B -e "SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, ROW_FORMAT, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA IN (!DBNAMES_IN!) ORDER BY TABLE_SCHEMA, TABLE_NAME;" > "%TABLE_SCHEMAS%"
+"%SQLBIN%%SQLCLI%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %CONN_OPTS% -N -B -e "SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, ROW_FORMAT, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA IN (!DBNAMES_IN!) ORDER BY TABLE_SCHEMA, TABLE_NAME;" > "%TABLE_SCHEMAS%"
 if errorlevel 1 (
   echo ERROR: Could not dump table metadata.
   goto :end

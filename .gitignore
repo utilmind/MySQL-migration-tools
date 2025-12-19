@@ -8,6 +8,7 @@
 *.rar
 *.txt
 *.log
+*.pem
 /ps1
 _*
 *.credentials.*
