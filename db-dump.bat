@@ -154,10 +154,14 @@ if not "%DB_HOST%"=="" (
   )
 )
 
-REM Optional: raise packet limit for large rows/BLOBs (client-side). Server-side limit must also allow it.
-set "CONN_PACKET_OPTS="
+REM Optional: raise packet limit for large rows/BLOBs (client-side).
+REM IMPORTANT: The server-side max_allowed_packet must also allow this value.
+REM Only enable this option if mysqldump actually supports it (older builds may not).
 if not "%MAX_ALLOWED_PACKET%"=="" (
-  set "CONN_PACKET_OPTS=--max-allowed-packet=%MAX_ALLOWED_PACKET%"
+    findstr /C:"--max-allowed-packet" "%MYSQLDUMP_HELP_FILE%" >nul 2>&1
+    if not errorlevel 1 (
+        set "COMMON_OPTS=%COMMON_OPTS% --max-allowed-packet=%MAX_ALLOWED_PACKET%"
+    )
 )
 
 REM If requested, set the network buffer size (mysqldump client-side) in bytes.
@@ -185,7 +189,8 @@ if not "%SSL_CA%"=="" (
 )
 
 REM Combined connection options for all SQL tools (mysql + mysqldump).
-set "CONN_OPTS=%CONN_COMPRESS_OPTS% %CONN_SSL_OPTS% %CONN_VERIFY_CERT_OPTS% %CONN_PACKET_OPTS%"
+REM Note: packet/buffer sizing options are appended to COMMON_OPTS (mysqldump-only) after capability checks.
+set "CONN_OPTS=%CONN_COMPRESS_OPTS% %CONN_SSL_OPTS% %CONN_VERIFY_CERT_OPTS%"
 
 
 REM --routines/--events/--triggers: include stored routines, events, and triggers.
@@ -432,7 +437,11 @@ REM Optionally export users and grants via the separate script.
 REM Important to prepare it in the beginning, to include to the _all_databases_ export.
 if "%EXPORT_USERS_AND_GRANTS%"=="1" (
   REM === Exporting users and grants using dump-users-and-grants.bat ===
-  @call "%~dp0dump-users-and-grants.bat" "%SQLBIN%" "%DB_HOST%" "%DB_PORT%" "%DB_USER%" "%DB_PASS%" "%OUTDIR%" "%USERDUMP%" "%SKIP_SSL%" "%SSL_CA%"
+  REM Pass SSL options to the child script. SSL_CA has priority over SKIP_SSL.
+  REM To prevent accidental "--skip-ssl"+"--ssl-ca" combos, we pass an effective SKIP_SSL=0 when SSL_CA is set.
+  set "CHILD_SKIP_SSL=%SKIP_SSL%"
+  if not "%SSL_CA%"=="" set "CHILD_SKIP_SSL=0"
+  @call "%~dp0dump-users-and-grants.bat" "%SQLBIN%" "%DB_HOST%" "%DB_PORT%" "%DB_USER%" "%DB_PASS%" "%OUTDIR%" "%USERDUMP%" "%CHILD_SKIP_SSL%" "%SSL_CA%"
   if not exist "%USERDUMP%" (
     REM echo WARNING: "%USERDUMP%" not found, will create dump with data only, without users/grants.
     goto :end
