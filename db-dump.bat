@@ -62,7 +62,7 @@ set "DB_PASS="
 
 REM Optional: increase client max_allowed_packet for large rows/BLOBs.
 REM Example values: 64M, 256M, 1G
-set "MAX_ALLOWED_PACKET="
+set "MAX_ALLOWED_PACKET=1024M"
 
 REM Optional: set the network buffer size for mysqldump in bytes.
 REM This can help when dumping tables with large rows / BLOBs over slow or flaky connections.
