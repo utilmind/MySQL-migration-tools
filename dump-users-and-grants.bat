@@ -41,7 +41,6 @@ set "SQLBIN="
 REM Run "mysql --version" to figure out the version of your default mysql.exe
 REM Client executable name: mysql.exe or mariadb.exe / mysqldump.exe or mariadb-dump.exe.
 set "SQLCLI=mysql.exe"
-set "SQLDUMP=mysqldump.exe"
 REM Output folder for users_and_grants.sql
 set "OUTDIR=.\_db-dumps"
 REM Connection params
@@ -76,7 +75,8 @@ REM ----------------------------------------------------------------
 
 REM Set target file names, after %OUTDIR% is defined.
 REM (Don't use exclamation sign in file names, to avoid !VAR! issues.)
-set "USERDUMP=%OUTDIR%\_users_and_grants.sql"
+REM Default output file if not provided via args.
+if not defined USERDUMP set "USERDUMP=%OUTDIR%\_users_and_grants.sql"
 REM Log and temporary files
 set "LOG=%OUTDIR%\__users_errors.log"
 set "USERLIST=%TEMP%\__user-list.txt"
@@ -120,14 +120,24 @@ chcp 65001 >nul
 echo === Exporting users and grants to "%USERDUMP%" ===
 
 REM Build SSL-related options. SSL_CA has priority over SKIP_SSL (mutually exclusive).
+REM Note: --ssl-verify-server-cert is not supported by every client build, so we enable it only if available.
 set "CONN_SSL_OPTS="
+set "CONN_VERIFY_CERT_OPTS="
 if not "%SSL_CA%"=="" (
-  set "CONN_SSL_OPTS=--ssl --ssl-ca=""%SSL_CA%"" --ssl-verify-server-cert"
+  set "CONN_SSL_OPTS=--ssl --ssl-ca=""%SSL_CA%"""
+  set "MYSQL_HELP_FILE=%TEMP%\mysql_help_%RANDOM%.tmp"
+  "%SQLBIN%%SQLCLI%" --help >"%MYSQL_HELP_FILE%" 2>&1
+  findstr /C:"--ssl-verify-server-cert" "%MYSQL_HELP_FILE%" >nul 2>&1
+  if not errorlevel 1 (
+    set "CONN_VERIFY_CERT_OPTS=--ssl-verify-server-cert"
+  )
+  del "%MYSQL_HELP_FILE%" >nul 2>&1
 ) else (
   if "%SKIP_SSL%"=="1" (
     set "CONN_SSL_OPTS=--skip-ssl"
   )
 )
+set "CONN_SSL_OPTS=%CONN_SSL_OPTS% %CONN_VERIFY_CERT_OPTS%"
 
 "%SQLBIN%%SQLCLI%" -h "%DB_HOST%" -P "%DB_PORT%" -u "%DB_USER%" -p%DB_PASS% %CONN_SSL_OPTS% -N -B ^
   -e "SELECT CONCAT(QUOTE(User),'@',QUOTE(Host)) FROM mysql.user WHERE User<>'' AND User NOT IN ('root','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','mariadb.session','debian-sys-maint','healthchecker','rdsadmin')" >"%USERLIST%" 2>>"%LOG%"
