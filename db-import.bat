@@ -27,6 +27,55 @@ REM ============== END OF CONFIG ==================
 REM Use UTF-8 encoding for output, if needed
 chcp 65001 >nul
 
+REM ==================== READ mysql HELP ====================
+REM Make sure that mysql exists in PATH
+mysql --version >nul 2>&1
+if errorlevel 1 (
+    echo [FAIL] mysql client not found in PATH or not executable.
+    exit /b 1
+)
+
+REM Store mysql --help output in a temporary file for option detection
+set "MYSQL_HELP_FILE=%TEMP%\mysql_help_%RANDOM%.tmp"
+mysql --help >"%MYSQL_HELP_FILE%" 2>&1
+if errorlevel 1 (
+    echo [FAIL] Failed to execute "mysql --help".
+    del "%MYSQL_HELP_FILE%" >nul 2>&1
+    exit /b 1
+)
+
+REM Extra mysql client options for import (built only if supported by this mysql.exe)
+set "IMPORT_OPTS="
+
+REM Optional: increase client max_allowed_packet for large rows/BLOBs
+if defined MAX_ALLOWED_PACKET (
+    if not "%MAX_ALLOWED_PACKET%"=="" (
+        findstr /C:"--max_allowed_packet" "%MYSQL_HELP_FILE%" >nul 2>&1
+        if not errorlevel 1 (
+            set "IMPORT_OPTS=%IMPORT_OPTS% --max_allowed_packet=%MAX_ALLOWED_PACKET%"
+        ) else (
+            echo [WARN] mysql client does not support --max_allowed_packet; skipping it.
+        )
+    )
+)
+
+REM Optional: set the network buffer size (bytes)
+if defined NET_BUFFER_LENGTH (
+    if not "%NET_BUFFER_LENGTH%"=="" (
+        findstr /C:"--net_buffer_length" "%MYSQL_HELP_FILE%" >nul 2>&1
+        if not errorlevel 1 (
+            set "IMPORT_OPTS=%IMPORT_OPTS% --net_buffer_length=%NET_BUFFER_LENGTH%"
+        ) else (
+            echo [WARN] mysql client does not support --net_buffer_length; skipping it.
+        )
+    )
+)
+
+REM Cleanup temporary mysql --help file
+if exist "%MYSQL_HELP_FILE%" del "%MYSQL_HELP_FILE%" >nul 2>&1
+set "MYSQL_HELP_FILE="
+
+
 
 REM Check if first argument is provided
 if "%~1"=="" (
@@ -68,9 +117,9 @@ REM   --verbose         -> show what is being executed (sometimes noisy, comment
 REM   --force           -> continue import even if SQL errors occur. You can review all errors together in the log.
 REM   source file       -> read SQL commands from dump file
 REM   2> "%LOGFILE%"    -> send ONLY errors (stderr) to _errors-import.log
-mysql -u "%DB_USER%" -p%DB_PASS% --force -e "source %WORK_SQL%" 2> "%LOGFILE%"
-REM mysql -u "%DB_USER%" -p%DB_PASS% --verbose --force -e "source %WORK_SQL%" 2> "%LOGFILE%"
-REM mysql -u "%DB_USER%" -p%DB_PASS% --force -e "source %WORK_SQL%"
+mysql -u "%DB_USER%" -p%DB_PASS% %IMPORT_OPTS% --force -e "source %WORK_SQL%" 2> "%LOGFILE%"
+REM mysql -u "%DB_USER%" -p%DB_PASS% %IMPORT_OPTS% --verbose --force -e "source %WORK_SQL%" 2> "%LOGFILE%"
+REM mysql -u "%DB_USER%" -p%DB_PASS% %IMPORT_OPTS% --force -e "source %WORK_SQL%"
 
 REM Save MySQL process exit code (connection / fatal errors)
 set "MYSQL_ERRORLEVEL=%ERRORLEVEL%"
