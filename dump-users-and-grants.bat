@@ -73,15 +73,14 @@ if not "%~7"=="" set "USERDUMP=%~7"
 if not "%~8"=="" set "SKIP_SSL=%~8"
 if not "%~9"=="" set "SSL_CA=%~9"
 
-REM If password sentinel is passed, treat it as "no password".
-if "%DB_PASS%"=="*" set "DB_PASS="
-
 REM Optional: use a local defaults-extra-file (INI) if the parent script provided it via environment.
 REM We intentionally avoid 10+ positional args in .bat scripts, so no %~10 here.
 set "DEFAULTS_OPT="
 if defined LOCAL_DEFAULTS_FILE (
   if exist "%LOCAL_DEFAULTS_FILE%" (
-    set "DEFAULTS_OPT=--defaults-extra-file=""%LOCAL_DEFAULTS_FILE%"""
+    REM IMPORTANT: Do NOT embed extra quotes into the option value.
+    REM We keep the raw path in the option and quote the whole argument at call site.
+    set "DEFAULTS_OPT=--defaults-extra-file=%LOCAL_DEFAULTS_FILE%"
   )
 )
 REM ----------------------------------------------------------------
@@ -141,7 +140,8 @@ REM === BUILD AUTH/CONNECTION ARGUMENTS ===
 REM NOTE: --defaults-extra-file MUST go first.
 set "MYSQL_AUTH_OPTS="
 if defined DEFAULTS_OPT (
-  set "MYSQL_AUTH_OPTS=%DEFAULTS_OPT%"
+  REM Quote the whole argument so paths with spaces work (e.g. C:\Program Files\...).
+  set "MYSQL_AUTH_OPTS=\"%DEFAULTS_OPT%\""
 ) else (
   set "MYSQL_AUTH_OPTS=-h ""%DB_HOST%"" -P %DB_PORT% -u ""%DB_USER%"" -p%DB_PASS%"
 )
