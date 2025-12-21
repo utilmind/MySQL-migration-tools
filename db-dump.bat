@@ -433,37 +433,53 @@ if "%DBNAMES%"=="" (
   REM No databases provided in CLI -> will dump ALL non-system databases
   if "%ONE_MODE%"=="1" (
     echo Planned action:
-    echo   Dump ALL non-system databases from %DB_HOST%:%DB_PORT% into ONE file:
+    if defined DEFAULTS_OPT (
+      echo   Dump ALL non-system databases ^(connection: from ini file^) into ONE file:
+    ) else (
+      echo   Dump ALL non-system databases from %DB_HOST%:%DB_PORT% into ONE file:
+    )
     echo     "%OUTFILE_FULL_PATH%"
   ) else (
     echo Planned action:
-    echo   Dump ALL non-system databases from %DB_HOST%:%DB_PORT% into separate files to the following directory:
+    if defined DEFAULTS_OPT (
+      echo   Dump ALL non-system databases ^(connection: from ini file^) into separate files to the following directory:
+    ) else (
+      echo   Dump ALL non-system databases from %DB_HOST%:%DB_PORT% into separate files to the following directory:
+    )
     echo     "%OUTDIR_FULL_PATH%"
   )
 ) else (
   REM Databases explicitly provided by the user
   if "%ONE_MODE%"=="1" (
     echo Planned action:
-    echo   Dump databases %DBNAMES% from %DB_HOST%:%DB_PORT% into ONE file:
+    if defined DEFAULTS_OPT (
+      echo   Dump databases %DBNAMES% ^(connection: from ini file^) into ONE file:
+    ) else (
+      echo   Dump databases %DBNAMES% from %DB_HOST%:%DB_PORT% into ONE file:
+    )
     echo     "%OUTFILE_FULL_PATH%"
   ) else (
     echo Planned action:
-    echo   Dump databases %DBNAMES% from %DB_HOST%:%DB_PORT% into separate file^(s^) to the following directory:
+    if defined DEFAULTS_OPT (
+      echo   Dump databases %DBNAMES% ^(connection: from ini file^) into separate file^(s^) to the following directory:
+    ) else (
+      echo   Dump databases %DBNAMES% from %DB_HOST%:%DB_PORT% into separate file^(s^) to the following directory:
+    )
     echo     "%OUTDIR_FULL_PATH%"
   )
 )
 echo.
 
 REM === ONLY NOW ASK FOR PASSWORD (IF NOT SET IN SCRIPT) ===
-if "%DB_PASS%"=="" (
+if not defined DEFAULTS_OPT if "%DB_PASS%"=="" (
   echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^) or press Ctrl+C to terminate.
   set /p "DB_PASS=> "
   set "PASS_WAS_PROMPTED=1"
   echo.
 )
 
-REM === Pause only when user did NOT enter a password AND no params were given ===
-if "%NO_ARGS%"=="1" if "%PASS_WAS_PROMPTED%"=="0" (
+REM === Pause only when no defaults file is used, user did NOT enter a password, and no params were given ===
+if not defined DEFAULTS_OPT if "%NO_ARGS%"=="1" if "%PASS_WAS_PROMPTED%"=="0" (
   echo.
   pause
   echo.
