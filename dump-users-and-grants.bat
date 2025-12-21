@@ -80,7 +80,7 @@ set "LOCAL_DEFAULTS_FILE=%~dp0.mysql-client.ini"
 set "DEFAULTS_OPT="
 if exist "%LOCAL_DEFAULTS_FILE%" (
   REM Keep DEFAULTS_OPT unquoted (no embedded quotes). We'll quote the whole token at invocation.
-  set "DEFAULTS_OPT=--defaults-extra-file=%LOCAL_DEFAULTS_FILE%"
+  set "DEFAULTS_OPT=--defaults-extra-file=^"%LOCAL_DEFAULTS_FILE%^""
 )
 
 
@@ -139,8 +139,7 @@ REM === BUILD AUTH/CONNECTION ARGUMENTS ===
 REM NOTE: --defaults-extra-file MUST go first.
 set "MYSQL_AUTH_OPTS="
 if defined DEFAULTS_OPT (
-  REM Quote the whole token so paths with spaces are safe.
-  set "MYSQL_AUTH_OPTS="%DEFAULTS_OPT%""
+  set "MYSQL_AUTH_OPTS=%DEFAULTS_OPT%"
 ) else (
   set "MYSQL_AUTH_OPTS=-h ""%DB_HOST%"" -P %DB_PORT% -u ""%DB_USER%"" -p%DB_PASS%"
 )
