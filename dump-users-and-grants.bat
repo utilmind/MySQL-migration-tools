@@ -175,14 +175,9 @@ if defined DEFAULTS_OPT set "CONN_SSL_OPTS="
 REM "%SQLBIN%%SQLCLI%" %MYSQL_AUTH_OPTS% %CONN_SSL_OPTS% -N -B ^
 REM  -e "SELECT CONCAT(QUOTE(User),'@',QUOTE(Host)) FROM mysql.user WHERE User<>'' AND User NOT IN ('root','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','mariadb.session','debian-sys-maint','healthchecker','rdsadmin')" >"%USERLIST%" 2>>"%LOG%"
 
-REM NOTE: Keep this as a single physical line.
-REM If there are trailing spaces after a line-continuation caret (^), cmd.exe can split the command
-REM and throw confusing errors like: "> was unexpected at this time."
-REM IMPORTANT: This script enables DelayedExpansion. In that mode, the "!" character is special in cmd.exe.
-REM So SQL fragments like "!=" can be mangled (e.g., "User!=''" becomes "User=''"), breaking the query.
-REM To prevent that, we temporarily DISABLE delayed expansion just for mysql.exe calls.
-rem echo "%SQLBIN%%SQLCLI%" %MYSQL_AUTH_OPTS% %CONN_SSL_OPTS% -N -B -e "SELECT CONCAT(QUOTE(User),'@',QUOTE(Host)) FROM mysql.user WHERE User NOT IN ('', 'root','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','mariadb.session','debian-sys-maint','healthchecker','rdsadmin')"
-rem exit
+REM DEBUG
+echo "%SQLBIN%%SQLCLI%" %MYSQL_AUTH_OPTS% %CONN_SSL_OPTS% -N -B -e "SELECT CONCAT(QUOTE(User),'@',QUOTE(Host)) FROM mysql.user WHERE User NOT IN ('', 'root','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','mariadb.session','debian-sys-maint','healthchecker','rdsadmin')"
+
 "%SQLBIN%%SQLCLI%" %MYSQL_AUTH_OPTS% %CONN_SSL_OPTS% -N -B -e "SELECT CONCAT(QUOTE(User),'@',QUOTE(Host)) FROM mysql.user WHERE User NOT IN ('', 'root','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','mariadb.session','debian-sys-maint','healthchecker','rdsadmin')" >"%USERLIST%" 2>>"%LOG%"
 if errorlevel 1 (
   echo ERROR: Could not retrieve user list. See "%LOG%" for details.
