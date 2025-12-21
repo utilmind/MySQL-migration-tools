@@ -59,7 +59,9 @@ set "SSL_CA="
 
 
 REM --------- Override config from arguments if provided ----------
-REM Arg1: SQLBIN, Arg2: DB_HOST, Arg3: DB_PORT, Arg4: DB_USER, Arg5: DB_PASS, Arg6: OUTDIR, Arg7: USERDUMP, Arg8: SKIP_SSL, Arg9: SSL_CA
+REM Arg1: SQLBIN, Arg2: DB_HOST, Arg3: DB_PORT, Arg4: DB_USER,
+REM Arg5: DB_PASS is ALWAYS passed by db-dump.bat. HOWEVER, if DB_PASS is "*", it means: "no password on CLI; use local ini (defaults-extra-file)".
+REM Arg6: OUTDIR, Arg7: USERDUMP, Arg8: SKIP_SSL, Arg9: SSL_CA
 
 if not "%~1"=="" set "SQLBIN=%~1"
 if not "%~2"=="" set "DB_HOST=%~2"
@@ -71,10 +73,13 @@ if not "%~7"=="" set "USERDUMP=%~7"
 if not "%~8"=="" set "SKIP_SSL=%~8"
 if not "%~9"=="" set "SSL_CA=%~9"
 
-REM Optional Arg10: path to a local option file for mysql.exe (defaults-extra-file). If present, it overrides hardcoded connection vars.
-set "LOCAL_DEFAULTS_FILE=%~10"
+REM If password sentinel is passed, treat it as "no password".
+if "%DB_PASS%"=="*" set "DB_PASS="
+
+REM Optional: use a local defaults-extra-file (INI) if the parent script provided it via environment.
+REM We intentionally avoid 10+ positional args in .bat scripts, so no %~10 here.
 set "DEFAULTS_OPT="
-if not "%LOCAL_DEFAULTS_FILE%"=="" (
+if defined LOCAL_DEFAULTS_FILE (
   if exist "%LOCAL_DEFAULTS_FILE%" (
     set "DEFAULTS_OPT=--defaults-extra-file=""%LOCAL_DEFAULTS_FILE%"""
   )

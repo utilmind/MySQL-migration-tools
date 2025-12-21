@@ -471,14 +471,21 @@ if "%DBNAMES%"=="" (
 echo.
 
 REM === ONLY NOW ASK FOR PASSWORD (IF NOT SET IN SCRIPT) ===
-if not defined DEFAULTS_OPT if "%DB_PASS%"=="" (
-  echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^) or press Ctrl+C to terminate.
-  set /p "DB_PASS=> "
-  set "PASS_WAS_PROMPTED=1"
-  echo.
+REM IMPORTANT:
+REM   If a local option file (.mysql-client.ini) was detected and will be passed
+REM   via --defaults-extra-file, DO NOT ask for password here.
+REM   In that mode MySQL tools will read the password from the ini.
+if not defined DEFAULTS_OPT (
+  if "%DB_PASS%"=="" (
+    echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^) or press Ctrl+C to terminate.
+    set /p "DB_PASS=> "
+    set "PASS_WAS_PROMPTED=1"
+    echo.
+  )
 )
 
-REM === Pause only when no defaults file is used, user did NOT enter a password, and no params were given ===
+REM === Pause only when user did NOT enter a password AND no params were given ===
+REM If an ini file is used (DEFAULTS_OPT defined) we skip the pause.
 if not defined DEFAULTS_OPT if "%NO_ARGS%"=="1" if "%PASS_WAS_PROMPTED%"=="0" (
   echo.
   pause
@@ -513,7 +520,14 @@ if "%EXPORT_USERS_AND_GRANTS%"=="1" (
   REM To prevent accidental "--skip-ssl"+"--ssl-ca" combos, we pass an effective SKIP_SSL=0 when SSL_CA is set.
   set "CHILD_SKIP_SSL=%SKIP_SSL%"
   if not "%SSL_CA%"=="" set "CHILD_SKIP_SSL=0"
-  @call "%~dp0dump-users-and-grants.bat" "%SQLBIN%" "%DB_HOST%" "%DB_PORT%" "%DB_USER%" "%DB_PASS%" "%OUTDIR%" "%USERDUMP%" "%CHILD_SKIP_SSL%" "%SSL_CA%" "%LOCAL_DEFAULTS_FILE%"
+
+  REM Always pass a password argument to the child script.
+  REM Use "*" as a sentinel that means: "no password on CLI; use local .mysql-client.ini".
+  set "PASS_FOR_CHILD=%DB_PASS%"
+  if "%PASS_FOR_CHILD%"=="" if defined DEFAULTS_OPT set "PASS_FOR_CHILD=*"
+
+  REM When using defaults-extra-file, the child script will pick up LOCAL_DEFAULTS_FILE from the environment.
+  @call "%~dp0dump-users-and-grants.bat" "%SQLBIN%" "%DB_HOST%" "%DB_PORT%" "%DB_USER%" "%PASS_FOR_CHILD%" "%OUTDIR%" "%USERDUMP%" "%CHILD_SKIP_SSL%" "%SSL_CA%" "%LOCAL_DEFAULTS_FILE%"
   if not exist "%USERDUMP%" (
     REM echo WARNING: "%USERDUMP%" not found, will create dump with data only, without users/grants.
     goto :end
