@@ -70,6 +70,15 @@ if not "%~6"=="" set "OUTDIR=%~6"
 if not "%~7"=="" set "USERDUMP=%~7"
 if not "%~8"=="" set "SKIP_SSL=%~8"
 if not "%~9"=="" set "SSL_CA=%~9"
+
+REM Optional Arg10: path to a local option file for mysql.exe (defaults-extra-file). If present, it overrides hardcoded connection vars.
+set "LOCAL_DEFAULTS_FILE=%~10"
+set "DEFAULTS_OPT="
+if not "%LOCAL_DEFAULTS_FILE%"=="" (
+  if exist "%LOCAL_DEFAULTS_FILE%" (
+    set "DEFAULTS_OPT=--defaults-extra-file=""%LOCAL_DEFAULTS_FILE%"""
+  )
+)
 REM ----------------------------------------------------------------
 
 
@@ -96,11 +105,15 @@ if defined SQLBIN (
   )
 )
 
-REM Ask for password only if DB_PASS is empty after overrides
-if "%DB_PASS%"=="" (
-  echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^)
-  set /p "DB_PASS=> "
-  echo.
+REM Ask for password only if DB_PASS is empty after overrides (and no defaults-extra-file is used)
+if not defined DEFAULTS_OPT (
+  REM Ask for password only if DB_PASS is empty after overrides
+  if "%DB_PASS%"=="" (
+    echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^)
+    set /p "DB_PASS=> "
+    echo.
+  )
+  
 )
 
 if not exist "%OUTDIR%" mkdir "%OUTDIR%"
@@ -118,6 +131,15 @@ setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
 
 echo === Exporting users and grants to "%USERDUMP%" ===
+
+REM === BUILD AUTH/CONNECTION ARGUMENTS ===
+REM NOTE: --defaults-extra-file MUST go first.
+set "MYSQL_AUTH_OPTS="
+if defined DEFAULTS_OPT (
+  set "MYSQL_AUTH_OPTS=%DEFAULTS_OPT%"
+) else (
+  set "MYSQL_AUTH_OPTS=-h ""%DB_HOST%"" -P %DB_PORT% -u ""%DB_USER%"" -p%DB_PASS%"
+)
 
 REM Build SSL-related options. SSL_CA has priority over SKIP_SSL (mutually exclusive).
 REM Note: --ssl-verify-server-cert is not supported by every client build, so we enable it only if available.
@@ -139,7 +161,11 @@ if not "%SSL_CA%"=="" (
 )
 set "CONN_SSL_OPTS=%CONN_SSL_OPTS% %CONN_VERIFY_CERT_OPTS%"
 
-"%SQLBIN%%SQLCLI%" -h "%DB_HOST%" -P "%DB_PORT%" -u "%DB_USER%" -p%DB_PASS% %CONN_SSL_OPTS% -N -B ^
+REM If a local defaults file is used, do not force SSL settings via CLI (ini must take precedence).
+if defined DEFAULTS_OPT set "CONN_SSL_OPTS="
+
+
+"%SQLBIN%%SQLCLI%" %MYSQL_AUTH_OPTS% %CONN_SSL_OPTS% -N -B ^
   -e "SELECT CONCAT(QUOTE(User),'@',QUOTE(Host)) FROM mysql.user WHERE User<>'' AND User NOT IN ('root','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','mariadb.session','debian-sys-maint','healthchecker','rdsadmin')" >"%USERLIST%" 2>>"%LOG%"
 if errorlevel 1 (
   echo ERROR: Could not retrieve user list. See "%LOG%" for details.
@@ -156,7 +182,7 @@ for /f "usebackq delims=" %%U in ("%USERLIST%") do (
   echo CREATE USER IF NOT EXISTS %%U;>>"%USERDUMP%"
 
   REM Write SHOW GRANTS output to a temporary file. (AK: we could output them, but should add ';' after GRANT string...)
-  "%SQLBIN%%SQLCLI%" -h "%DB_HOST%" -P "%DB_PORT%" -u "%DB_USER%" -p%DB_PASS% %CONN_SSL_OPTS% -N -B -e "SHOW GRANTS FOR %%U" >"%TMPGRANTS%" 2>>"%LOG%"
+  "%SQLBIN%%SQLCLI%" %MYSQL_AUTH_OPTS% %CONN_SSL_OPTS% -N -B -e "SHOW GRANTS FOR %%U" >"%TMPGRANTS%" 2>>"%LOG%"
 
   REM Read each GRANT line and append a semicolon
   for /f "usebackq delims=" %%G in ("%TMPGRANTS%") do (
