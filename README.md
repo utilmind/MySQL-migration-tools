@@ -135,7 +135,7 @@ db-import.bat source-dump.sql[.gz]|source-dump.zip|source-dump.rar
 ```
 💡You can edit `db-import.bat` on your local PC and specify hardcoded password, to avoid having to enter a password every time you import dump into the database.
 
-⚠️ If you are importing dumps with huge blobs, make sure that your MySQL/MariaDB **server** is able to accept packets with size used in your dumps. Add something like the following into your `my.ini` (or `my.cnf`).
+⚠️ If you are importing dumps with huge blobs, make sure that your MySQL/MariaDB **server** *(not mysql.exe, not client app)* is able to accept packets with size used in your dumps. Add something like the following into your `my.ini` (or `my.cnf`).
 
 ```ini
 [mysqld]
