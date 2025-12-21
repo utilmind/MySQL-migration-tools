@@ -176,7 +176,7 @@ hardcoded/default settings inside the `.bat` file.
 
 ### Recommended usage
 
-- Store credentials and connection-related settings in `.mysql-client.ini`
+- Store credentials and connection-related settings in [`.mysql-client.ini`](.mysql-client.ini)
 - Add this file to `.gitignore`
 - Restrict file permissions so only your user can read it
 
