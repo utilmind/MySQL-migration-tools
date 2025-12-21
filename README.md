@@ -222,8 +222,8 @@ net-buffer-length=4194304
   tool-specific overrides.
 - You **do not need** to duplicate credentials between sections — MySQL clients inherit
   shared options automatically.
-- Use `/`-slashes in `ssl-ca` path in Windows, because `\` (backslashes) are misinterpreted
-  as escape character. Or alternatively use `\\`, double slashes.
+- Use `/` (slashes) or `\\` (double backslashes) in `ssl-ca` path in Windows,
+  because `\` are misinterpreted as escape character.
 
 ---
 
