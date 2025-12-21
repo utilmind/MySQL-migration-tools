@@ -23,11 +23,22 @@ set "LOGFILE=_errors-import.log"
 set "DB_USER=root"
 REM Password: put real password here, or leave EMPTY to be prompted. Do not expose your password in public!!
 set "DB_PASS="
+
+REM Optional: increase client max_allowed_packet for large rows/BLOBs.
+REM Example values: 64M, 256M, 1G
+set "MAX_ALLOWED_PACKET=1024M"
+
+REM Optional: set the network buffer size for mysqldump in bytes.
+REM This can help when dumping tables with large rows / BLOBs over slow or flaky connections.
+REM Example values: 1048576 (1 MiB), 4194304 (4 MiB)
+set "NET_BUFFER_LENGTH=4194304"
+
+REM set "SQLCLI=mariadb.exe"
+set "SQLCLI=mysql.exe"
 REM ============== END OF CONFIG ==================
 REM Use UTF-8 encoding for output, if needed
 chcp 65001 >nul
 
-REM ==================== READ mysql HELP ====================
 REM Make sure that mysql exists in PATH
 mysql --version >nul 2>&1
 if errorlevel 1 (
@@ -35,9 +46,11 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM ==================== READ mysql HELP ====================
+REM Detect whether the local mysql.exe supports certain client options (MariaDB/MySQL builds can differ).
 REM Store mysql --help output in a temporary file for option detection
 set "MYSQL_HELP_FILE=%TEMP%\mysql_help_%RANDOM%.tmp"
-mysql --help >"%MYSQL_HELP_FILE%" 2>&1
+%SQLCLI% --help >"%MYSQL_HELP_FILE%" 2>&1
 if errorlevel 1 (
     echo [FAIL] Failed to execute "mysql --help".
     del "%MYSQL_HELP_FILE%" >nul 2>&1
@@ -50,11 +63,11 @@ set "IMPORT_OPTS="
 REM Optional: increase client max_allowed_packet for large rows/BLOBs
 if defined MAX_ALLOWED_PACKET (
     if not "%MAX_ALLOWED_PACKET%"=="" (
-        findstr /C:"--max_allowed_packet" "%MYSQL_HELP_FILE%" >nul 2>&1
+        findstr /C:"--max-allowed-packet" "%MYSQL_HELP_FILE%" >nul 2>&1
         if not errorlevel 1 (
-            set "IMPORT_OPTS=%IMPORT_OPTS% --max_allowed_packet=%MAX_ALLOWED_PACKET%"
+            set "IMPORT_OPTS=%IMPORT_OPTS% --max-allowed-packet=%MAX_ALLOWED_PACKET%"
         ) else (
-            echo [WARN] mysql client does not support --max_allowed_packet; skipping it.
+            echo [WARN] mysql client does not support --max-allowed-packet; skipping it.
         )
     )
 )
@@ -62,19 +75,20 @@ if defined MAX_ALLOWED_PACKET (
 REM Optional: set the network buffer size (bytes)
 if defined NET_BUFFER_LENGTH (
     if not "%NET_BUFFER_LENGTH%"=="" (
-        findstr /C:"--net_buffer_length" "%MYSQL_HELP_FILE%" >nul 2>&1
+        findstr /C:"--net-buffer-length" "%MYSQL_HELP_FILE%" >nul 2>&1
         if not errorlevel 1 (
-            set "IMPORT_OPTS=%IMPORT_OPTS% --net_buffer_length=%NET_BUFFER_LENGTH%"
+            set "IMPORT_OPTS=%IMPORT_OPTS% --net-buffer-length=%NET_BUFFER_LENGTH%"
         ) else (
-            echo [WARN] mysql client does not support --net_buffer_length; skipping it.
+            echo [WARN] mysql client does not support --net-buffer-length; skipping it.
         )
     )
 )
 
-REM Cleanup temporary mysql --help file
-if exist "%MYSQL_HELP_FILE%" del "%MYSQL_HELP_FILE%" >nul 2>&1
-set "MYSQL_HELP_FILE="
-
+REM Cleanup temporary mysqldump --help file (no longer needed after building COMMON_OPTS)
+if defined MYSQL_HELP_FILE (
+    if exist "%MYSQL_HELP_FILE%" del "%MYSQL_HELP_FILE%" >nul 2>&1
+    set "MYSQL_HELP_FILE="
+)
 
 
 REM Check if first argument is provided
@@ -117,7 +131,7 @@ REM   --verbose         -> show what is being executed (sometimes noisy, comment
 REM   --force           -> continue import even if SQL errors occur. You can review all errors together in the log.
 REM   source file       -> read SQL commands from dump file
 REM   2> "%LOGFILE%"    -> send ONLY errors (stderr) to _errors-import.log
-mysql -u "%DB_USER%" -p%DB_PASS% %IMPORT_OPTS% --force -e "source %WORK_SQL%" 2> "%LOGFILE%"
+%SQLCLI% -u "%DB_USER%" -p%DB_PASS% %IMPORT_OPTS% --force -e "source %WORK_SQL%" 2> "%LOGFILE%"
 REM mysql -u "%DB_USER%" -p%DB_PASS% %IMPORT_OPTS% --verbose --force -e "source %WORK_SQL%" 2> "%LOGFILE%"
 REM mysql -u "%DB_USER%" -p%DB_PASS% %IMPORT_OPTS% --force -e "source %WORK_SQL%"
 
