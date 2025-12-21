@@ -114,9 +114,45 @@ REM Replace 'python' to 'python3' or 'py', depending under which name the Python
 set "POST_PROCESSOR=python ./bash/post-process-dump.py"
 
 
+REM ================== RESOLVE TOOL PATHS (SQLBIN-aware) ==================
+REM Normalize SQLBIN (ensure trailing backslash) and build full executable paths.
+set "SQLBIN_NORM=%SQLBIN%"
+if defined SQLBIN_NORM (
+  if not "%SQLBIN_NORM%"=="" (
+    if not "%SQLBIN_NORM:~-1%"=="\" set "SQLBIN_NORM=%SQLBIN_NORM%\"
+  )
+)
+
+if not defined SQLCLI (
+  echo ERROR: SQLCLI ^(mysql.exe or mariadb.exe^) is not defined.
+  goto :end
+)
+if not defined SQLDUMP (
+  echo ERROR: SQLDUMP ^(mysqldump.exe or mariadb-dump.exe^) is not defined.
+  goto :end
+)
+
+set "SQLCLI_EXE=%SQLBIN_NORM%%SQLCLI%"
+set "SQLDUMP_EXE=%SQLBIN_NORM%%SQLDUMP%"
+
+REM If SQLBIN is provided, ensure the executables exist there (fail fast).
+if not "%SQLBIN_NORM%"=="" (
+  if not exist "%SQLCLI_EXE%" (
+    echo ERROR: %SQLCLI% not found at "%SQLBIN_NORM%".
+    echo Please edit SQLBIN / SQLCLI in "%~nx0".
+    goto :end
+  )
+  if not exist "%SQLDUMP_EXE%" (
+    echo ERROR: %SQLDUMP% not found at "%SQLBIN_NORM%".
+    echo Please edit SQLBIN / SQLDUMP in "%~nx0".
+    goto :end
+  )
+)
+
+
 REM ==================== READ mysqldump HELP ====================
 REM Make sure that mysqldump exists in PATH
-"%SQLDUMP%" --version >nul 2>&1
+"%SQLDUMP_EXE%" --version >nul 2>&1
 if errorlevel 1 (
     echo [FAIL] mysqldump not found in PATH or not executable.
     goto :end
@@ -124,7 +160,7 @@ if errorlevel 1 (
 
 REM Store mysqldump --help output in a temporary file for reuse
 set "MYSQLDUMP_HELP_FILE=%TEMP%\mysqldump_help_%RANDOM%.tmp"
-"%SQLDUMP%" --help >"%MYSQLDUMP_HELP_FILE%" 2>&1
+"%SQLDUMP_EXE%" --help >"%MYSQLDUMP_HELP_FILE%" 2>&1
 if errorlevel 1 (
     echo [FAIL] Failed to execute "%SQLDUMP% --help".
     del "%MYSQLDUMP_HELP_FILE%" >nul 2>&1
@@ -181,7 +217,7 @@ set "CONN_VERIFY_CERT_OPTS="
 if not "%SSL_CA%"=="" (
   REM This is --help for `mysql.exe`, don't confuse with --help for mysqldump.exe above. In theory the dump and client apps may have different versions, so detect both for safety.
   set "MYSQL_HELP_FILE=%TEMP%\mysql_help_%RANDOM%.tmp"
-  "%SQLBIN%%SQLCLI%" --help >"%MYSQL_HELP_FILE%" 2>&1
+  "%SQLCLI_EXE%" --help >"%MYSQL_HELP_FILE%" 2>&1
   if not errorlevel 1 (
     findstr /C:"--ssl-verify-server-cert" "%MYSQL_HELP_FILE%" >nul 2>&1
     if not errorlevel 1 set "CONN_VERIFY_CERT_OPTS=--ssl-verify-server-cert"
@@ -263,6 +299,7 @@ REM set "COMMON_OPTS=%COMMON_OPTS% --skip-extended-insert"
 
 REM ================== END CONFIG ==============
 
+
 REM Cleanup temporary mysqldump --help file (no longer needed after building COMMON_OPTS)
 if defined MYSQLDUMP_HELP_FILE (
   if exist "%MYSQLDUMP_HELP_FILE%" del "%MYSQLDUMP_HELP_FILE%" >nul 2>&1
@@ -290,35 +327,6 @@ set "NO_ARGS=0"
 REM Flag: password was requested interactively from user
 set "PASS_WAS_PROMPTED=0"
 if "%~1"=="" set "NO_ARGS=1"
-
-REM Add trailing slash (\) to the end of %SQLBIN%, if it's not empty.
-if defined SQLBIN (
-  if not "!SQLBIN:~-1!"=="\" (
-      set "SQLBIN=!SQLBIN!\"
-  )
-
-  REM Check executables in specified directory (if SQLBIN specified). Ensure tools exist.
-  if not exist "!SQLBIN!%SQLCLI%" (
-    echo ERROR: %SQLCLI% not found at "!SQLBIN!".
-    echo Please open the '%~nx0', and edit the configuration, particularly the path in SQLBIN variable.
-    goto :end
-  )
-  if not exist "!SQLBIN!%SQLDUMP%" (
-    echo ERROR: %SQLDUMP% not found at "!SQLBIN!".
-    echo Please open the '%~nx0', and edit the configuration, particularly the SQLDUMP variable.
-    goto :end
-  )
-)
-
-REM Basic validations
-if not defined SQLCLI (
-  echo ERROR: SQLCLI ^(mysql.exe or mariadb.exe^) is not defined.
-  goto :end
-)
-if not defined SQLDUMP (
-  echo ERROR: SQLDUMP ^(mysqldump.exe or mariadb-dump.exe^) is not defined.
-  goto :end
-)
 
 
 REM Show general connection info first
@@ -456,7 +464,7 @@ echo Getting database names from server
 if "%DBNAMES%" NEQ "" goto :mode_selection
 
 echo === Getting database list from %DB_HOST%:%DB_PORT% ...
-"%SQLBIN%%SQLCLI%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %CONN_OPTS% -N -B -e "SHOW DATABASES" > "%DBLIST%"
+"%SQLCLI_EXE%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %CONN_OPTS% -N -B -e "SHOW DATABASES" > "%DBLIST%"
 REM     this way could exclude system tables immediately, but this doesn't exports *empty* databases (w/o tables yet), which still could be important. So let's keep canonical SHOW DATABASES, then filter it.
 REM AK: Alternatively we could use `SELECT DISTINCT TABLE_SCHEMA FROM information_schema.tables WHERE TABLE_SCHEMA NOT IN ("information_schema", "performance_schema", "mysql", "sys");`,
 if errorlevel 1 (
@@ -554,7 +562,7 @@ for %%D in (!DBNAMES!) do (
 
 REM === Dump default table schemas, to be able to restore everything exactly as on original server ===
 echo Dumping table metadata to '%TABLE_SCHEMAS%'...
-"%SQLBIN%%SQLCLI%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %CONN_OPTS% -N -B -e "SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, ROW_FORMAT, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA IN (!DBNAMES_IN!) ORDER BY TABLE_SCHEMA, TABLE_NAME;" > "%TABLE_SCHEMAS%"
+"%SQLCLI_EXE%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %CONN_OPTS% -N -B -e "SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, ROW_FORMAT, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA IN (!DBNAMES_IN!) ORDER BY TABLE_SCHEMA, TABLE_NAME;" > "%TABLE_SCHEMAS%"
 if errorlevel 1 (
   echo ERROR: Could not dump table metadata.
   goto :end
@@ -602,7 +610,7 @@ echo Raw output file will be: "%ALLDATA%"
 
 REM Single mysqldump call for all databases
 REM (stderr goes to log, output goes directly to ALLDATA)
-"%SQLBIN%%SQLDUMP%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %COMMON_OPTS% --databases !DBNAMES! --result-file="%ALLDATA%" 2>> "%LOG%"
+"%SQLDUMP_EXE%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %COMMON_OPTS% --databases !DBNAMES! --result-file="%ALLDATA%" 2>> "%LOG%"
 
 if errorlevel 1 (
   echo [%DATE% %TIME%] ERROR dumping multiple databases >> "%LOG%"
@@ -668,7 +676,7 @@ if "%TARGET%"=="" (
 
 echo --- Dumping database '%DBNAME%' to '%TARGET%'...
 REM Alternatively we could specify --result-file="%TARGET%", but we want error log anyway.
-"%SQLBIN%%SQLDUMP%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %COMMON_OPTS% "%DBNAME%" 1>> "%TARGET%" 2>> "%LOG%"
+"%SQLDUMP_EXE%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %COMMON_OPTS% "%DBNAME%" 1>> "%TARGET%" 2>> "%LOG%"
 if errorlevel 1 (
   REM These messages are good to search, so append the following line %LOG% to log...
   echo [%DATE% %TIME%] ERROR dumping database '%DBNAME%' >> "%LOG%"
