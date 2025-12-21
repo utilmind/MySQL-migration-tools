@@ -66,7 +66,6 @@ set "LOCAL_DEFAULTS_FILE=%~dp0.mysql-client.ini"
 set "USE_DEFAULTS_FILE=0"
 if exist "%LOCAL_DEFAULTS_FILE%" set "USE_DEFAULTS_FILE=1"
 
-
 REM Optional: increase client max_allowed_packet for large rows/BLOBs.
 REM Example values: 64M, 256M, 1G
 set "MAX_ALLOWED_PACKET=1024M"
@@ -119,17 +118,21 @@ REM The file name appendix for dumps clean of the compatibility comments. E.g. m
 set "POST_PROCESS_APPENDIX=.clean"
 REM Replace 'python' to 'python3' or 'py', depending under which name the Python interpreter is registered in your system.
 set "POST_PROCESSOR=python ./bash/post-process-dump.py"
+REM ================== END CONFIG ==================
 
+
+REM Use UTF-8 encoding for output, if needed
+chcp 65001 >nul
+setlocal EnableExtensions EnableDelayedExpansion
 
 REM ================== RESOLVE TOOL PATHS (SQLBIN-aware) ==================
 REM Normalize SQLBIN (ensure trailing backslash) and build full executable paths.
 set "SQLBIN_NORM=%SQLBIN%"
 if defined SQLBIN_NORM (
   if not "%SQLBIN_NORM%"=="" (
-    if not "%SQLBIN_NORM:~-1%"=="\" set "SQLBIN_NORM=%SQLBIN_NORM%\"
+    if not "%SQLBIN_NORM:~-1%"=="\" set "SQLBIN_NORM=!SQLBIN_NORM!\"
   )
 )
-
 if not defined SQLCLI (
   echo ERROR: SQLCLI ^(mysql.exe or mariadb.exe^) is not defined.
   goto :end
@@ -160,6 +163,7 @@ if not "%SQLBIN_NORM%"=="" (
 REM ==================== READ mysqldump HELP ====================
 REM Make sure that mysqldump exists in PATH
 "%SQLDUMP_EXE%" --version >nul 2>&1
+
 if errorlevel 1 (
     echo [FAIL] mysqldump not found in PATH or not executable.
     goto :end
@@ -173,6 +177,7 @@ if errorlevel 1 (
     del "%MYSQLDUMP_HELP_FILE%" >nul 2>&1
     goto :end
 )
+
 
 REM Dump options common for all databases
 REM NOTE: These options affect every dump produced by this script.
@@ -316,7 +321,7 @@ REM set "COMMON_OPTS=%COMMON_OPTS% --add-drop-database"
 REM Use one INSERT per row (easier diff/merge; slower/larger). Default is multi-row extended inserts.
 REM set "COMMON_OPTS=%COMMON_OPTS% --skip-extended-insert"
 
-REM ================== END CONFIG ==============
+REM ================== END OF SETTINGS ==============
 
 
 REM Cleanup temporary mysqldump --help file (no longer needed after building COMMON_OPTS)
@@ -336,10 +341,6 @@ set "TABLE_SCHEMAS=%TEMP%\__tables-schemas.tsv"
 set "DBLIST=%TEMP%\__db-list.txt"
 set "DBNAMES="
 set "DBNAMES_IN="
-
-REM Use UTF-8 encoding for output, if needed
-chcp 65001 >nul
-setlocal EnableExtensions EnableDelayedExpansion
 
 REM Flag: script was started without any CLI arguments
 set "NO_ARGS=0"
