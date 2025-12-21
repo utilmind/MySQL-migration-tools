@@ -350,7 +350,9 @@ if "%~1"=="" set "NO_ARGS=1"
 
 set "DEFAULTS_OPT="
 if "%USE_DEFAULTS_FILE%"=="1" (
-  set "DEFAULTS_OPT=--defaults-extra-file=""%LOCAL_DEFAULTS_FILE%"""
+  REM IMPORTANT: Do NOT embed extra quotes into the option value.
+  REM We keep the raw path in the option and quote the whole argument at call site. So, no ""%LOCAL_DEFAULTS_FILE%"" here.
+  set "DEFAULTS_OPT=--defaults-extra-file=%LOCAL_DEFAULTS_FILE%"
 )
 
 
@@ -470,26 +472,23 @@ if "%DBNAMES%"=="" (
 )
 echo.
 
-REM === ONLY NOW ASK FOR PASSWORD (IF NOT SET IN SCRIPT) ===
-REM IMPORTANT:
-REM   If a local option file (.mysql-client.ini) was detected and will be passed
-REM   via --defaults-extra-file, DO NOT ask for password here.
-REM   In that mode MySQL tools will read the password from the ini.
-if not defined DEFAULTS_OPT (
+if not defined DEFAULTS_OPT  (
+  REM === ONLY NOW ASK FOR PASSWORD (IF NOT SET IN SCRIPT) ===
+  REM If we use --defaults-extra-file, password MUST come from the ini; no prompt.
   if "%DB_PASS%"=="" (
     echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^) or press Ctrl+C to terminate.
     set /p "DB_PASS=> "
     set "PASS_WAS_PROMPTED=1"
     echo.
   )
-)
 
-REM === Pause only when user did NOT enter a password AND no params were given ===
-REM If an ini file is used (DEFAULTS_OPT defined) we skip the pause.
-if not defined DEFAULTS_OPT if "%NO_ARGS%"=="1" if "%PASS_WAS_PROMPTED%"=="0" (
-  echo.
-  pause
-  echo.
+  REM === Pause only when user did NOT enter a password AND no params were given ===
+  REM If we use a local ini, skip the pause.
+  if "%NO_ARGS%"=="1" if "%PASS_WAS_PROMPTED%"=="0" (
+    echo.
+    pause
+    echo.
+  )
 )
 
 REM Create output directory
@@ -500,8 +499,9 @@ set "MYSQL_AUTH_OPTS="
 set "DUMP_AUTH_OPTS="
 if defined DEFAULTS_OPT (
   REM When using option file, do not pass hardcoded connection/SSL params on CLI (so ini can override).
-  set "MYSQL_AUTH_OPTS=%DEFAULTS_OPT%"
-  set "DUMP_AUTH_OPTS=%DEFAULTS_OPT%"
+  REM Quote the whole argument so paths with spaces work (e.g. C:\Program Files\...).
+  set "MYSQL_AUTH_OPTS=\"%DEFAULTS_OPT%\""
+  set "DUMP_AUTH_OPTS=\"%DEFAULTS_OPT%\""
   REM Also disable script-side SSL CLI options (they would override ini).
   set "MYSQL_CONN_OPTS="
   set "DUMP_CONN_OPTS="
@@ -520,14 +520,9 @@ if "%EXPORT_USERS_AND_GRANTS%"=="1" (
   REM To prevent accidental "--skip-ssl"+"--ssl-ca" combos, we pass an effective SKIP_SSL=0 when SSL_CA is set.
   set "CHILD_SKIP_SSL=%SKIP_SSL%"
   if not "%SSL_CA%"=="" set "CHILD_SKIP_SSL=0"
-
-  REM Always pass a password argument to the child script.
-  REM Use "*" as a sentinel that means: "no password on CLI; use local .mysql-client.ini".
-  set "PASS_FOR_CHILD=%DB_PASS%"
-  if "%PASS_FOR_CHILD%"=="" if defined DEFAULTS_OPT set "PASS_FOR_CHILD=*"
-
-  REM When using defaults-extra-file, the child script will pick up LOCAL_DEFAULTS_FILE from the environment.
-  @call "%~dp0dump-users-and-grants.bat" "%SQLBIN%" "%DB_HOST%" "%DB_PORT%" "%DB_USER%" "%PASS_FOR_CHILD%" "%OUTDIR%" "%USERDUMP%" "%CHILD_SKIP_SSL%" "%SSL_CA%" "%LOCAL_DEFAULTS_FILE%"
+  REM Don't skip any parameter. All positions are important. Password will not be used if %LOCAL_DEFAULTS_FILE% provided.
+  if "%DB_PASS%"=="" set "DB_PASS=*"
+  @call "%~dp0dump-users-and-grants.bat" "%SQLBIN%" "%DB_HOST%" "%DB_PORT%" "%DB_USER%" "%DB_PASS%" "%OUTDIR%" "%USERDUMP%" "%CHILD_SKIP_SSL%" "%SSL_CA%" "%LOCAL_DEFAULTS_FILE%"
   if not exist "%USERDUMP%" (
     REM echo WARNING: "%USERDUMP%" not found, will create dump with data only, without users/grants.
     goto :end
