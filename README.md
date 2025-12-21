@@ -180,7 +180,7 @@ hardcoded/default settings inside the `.bat` file.
 - Add this file to `.gitignore`
 - Restrict file permissions so only your user can read it
 
-### Example `.mysql-client.ini`
+### Example [`.mysql-client.ini`](.mysql-client.ini)
 
 ```ini
 [client]
