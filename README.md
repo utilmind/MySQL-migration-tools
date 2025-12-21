@@ -190,12 +190,13 @@ user=backup_user
 password=SuperSecretPassword
 default-character-set=utf8mb4
 
-# Optional SSL settings:
+; Optional SSL settings:
 # ssl-ca=C:/certs/rds-global-bundle.pem
+; The following one is for MySQL only, not available in MariaDB.
 # ssl-mode=REQUIRED
 
 [mysqldump]
-# Dump-specific options (optional)
+; Dump-specific options (optional)
 max-allowed-packet=1024M
 net-buffer-length=4194304
 single-transaction
@@ -209,7 +210,7 @@ set-gtid-purged=OFF
 column-statistics=0
 
 [mysql]
-# Import-specific options (optional)
+; Import-specific options (optional)
 max-allowed-packet=1024M
 net-buffer-length=4194304
 ```
