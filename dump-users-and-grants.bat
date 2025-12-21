@@ -73,17 +73,15 @@ if not "%~7"=="" set "USERDUMP=%~7"
 if not "%~8"=="" set "SKIP_SSL=%~8"
 if not "%~9"=="" set "SSL_CA=%~9"
 
-REM Optional: use a local defaults-extra-file (INI) if the parent script provided it via environment.
-REM We intentionally avoid 10+ positional args in .bat scripts, so no %~10 here.
+REM Local option file (.mysql-client.ini) handling.
+REM We intentionally DO NOT rely on %~10, because positional parameters >=10 are error-prone in cmd.exe.
+REM Instead, we probe the ini next to this script.
+set "LOCAL_DEFAULTS_FILE=%~dp0.mysql-client.ini"
 set "DEFAULTS_OPT="
-if defined LOCAL_DEFAULTS_FILE (
-  if exist "%LOCAL_DEFAULTS_FILE%" (
-    REM IMPORTANT: Do NOT embed extra quotes into the option value.
-    REM We keep the raw path in the option and quote the whole argument at call site.
-    set "DEFAULTS_OPT=--defaults-extra-file=%LOCAL_DEFAULTS_FILE%"
-  )
+if exist "%LOCAL_DEFAULTS_FILE%" (
+  REM Keep DEFAULTS_OPT unquoted (no embedded quotes). We'll quote the whole token at invocation.
+  set "DEFAULTS_OPT=--defaults-extra-file=%LOCAL_DEFAULTS_FILE%"
 )
-REM ----------------------------------------------------------------
 
 
 REM Set target file names, after %OUTDIR% is defined.
@@ -111,13 +109,14 @@ if defined SQLBIN (
 
 REM Ask for password only if DB_PASS is empty after overrides (and no defaults-extra-file is used)
 if not defined DEFAULTS_OPT (
+  REM If the caller passed "*" as password, treat it as "no password provided".
+  if "%DB_PASS%"=="*" set "DB_PASS="
   REM Ask for password only if DB_PASS is empty after overrides
   if "%DB_PASS%"=="" (
     echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^)
     set /p "DB_PASS=> "
     echo.
   )
-
 )
 
 if not exist "%OUTDIR%" mkdir "%OUTDIR%"
@@ -140,8 +139,8 @@ REM === BUILD AUTH/CONNECTION ARGUMENTS ===
 REM NOTE: --defaults-extra-file MUST go first.
 set "MYSQL_AUTH_OPTS="
 if defined DEFAULTS_OPT (
-  REM Quote the whole argument so paths with spaces work (e.g. C:\Program Files\...).
-  set "MYSQL_AUTH_OPTS=\"%DEFAULTS_OPT%\""
+  REM Quote the whole token so paths with spaces are safe.
+  set "MYSQL_AUTH_OPTS="%DEFAULTS_OPT%""
 ) else (
   set "MYSQL_AUTH_OPTS=-h ""%DB_HOST%"" -P %DB_PORT% -u ""%DB_USER%"" -p%DB_PASS%"
 )
@@ -171,7 +170,13 @@ if defined DEFAULTS_OPT set "CONN_SSL_OPTS="
 
 
 "%SQLBIN%%SQLCLI%" %MYSQL_AUTH_OPTS% %CONN_SSL_OPTS% -N -B ^
-  -e "SELECT CONCAT(QUOTE(User),'@',QUOTE(Host)) FROM mysql.user WHERE User<>'' AND User NOT IN ('root','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','mariadb.session','debian-sys-maint','healthchecker','rdsadmin')" >"%USERLIST%" 2>>"%LOG%"
+REM "%SQLBIN%%SQLCLI%" %MYSQL_AUTH_OPTS% %CONN_SSL_OPTS% -N -B ^
+REM  -e "SELECT CONCAT(QUOTE(User),'@',QUOTE(Host)) FROM mysql.user WHERE User<>'' AND User NOT IN ('root','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','mariadb.session','debian-sys-maint','healthchecker','rdsadmin')" >"%USERLIST%" 2>>"%LOG%"
+
+REM NOTE: Keep this as a single physical line.
+REM If there are trailing spaces after a line-continuation caret (^), cmd.exe can split the command
+REM and throw confusing errors like: "> was unexpected at this time."
+"%SQLBIN%%SQLCLI%" %MYSQL_AUTH_OPTS% %CONN_SSL_OPTS% -N -B -e "SELECT CONCAT(QUOTE(User),'@',QUOTE(Host)) FROM mysql.user WHERE User!='' AND User NOT IN ('root','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','mariadb.session','debian-sys-maint','healthchecker','rdsadmin')" >"%USERLIST%" 2>>"%LOG%"
 if errorlevel 1 (
   echo ERROR: Could not retrieve user list. See "%LOG%" for details.
   goto :end
