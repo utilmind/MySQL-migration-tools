@@ -149,7 +149,7 @@ net_write_timeout=600
 
 ## 🔐 Secure credentials via `.ini` file (Windows)
 
-On Windows, all `*.bat` scripts (`db-dump.bat`, `db-import.bat`, `dump-users-and-grants.bat`)
+On Windows, all `*.bat` scripts ([`db-dump.bat`](db-dump.bat), [`db-import.bat`](db-import.bat), [`dump-users-and-grants.bat`](dump-users-and-grants.bat))
 support **optional MySQL client option files** (`.ini` / `.cnf`) to avoid hardcoding passwords
 directly inside batch scripts.
 
