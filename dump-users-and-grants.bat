@@ -59,9 +59,10 @@ set "SSL_CA="
 
 
 REM --------- Override config from arguments if provided ----------
-REM Arg1: SQLBIN, Arg2: DB_HOST, Arg3: DB_PORT, Arg4: DB_USER,
-REM Arg5: DB_PASS is ALWAYS passed by db-dump.bat. HOWEVER, if DB_PASS is "*", it means: "no password on CLI; use local ini (defaults-extra-file)".
-REM Arg6: OUTDIR, Arg7: USERDUMP, Arg8: SKIP_SSL, Arg9: SSL_CA
+REM Arg1: SQLBIN, Arg2: DB_HOST, Arg3: DB_PORT, Arg4: DB_USER, Arg5: DB_PASS, Arg6: OUTDIR, Arg7: USERDUMP, Arg8: SKIP_SSL, Arg9: SSL_CA
+REM Notes:
+REM   - DB_PASS can be passed as "*" to indicate "no password here; prefer local ini".
+REM   - When a local ini is found, it is used via --defaults-extra-file and DB_PASS is ignored.
 
 if not "%~1"=="" set "SQLBIN=%~1"
 if not "%~2"=="" set "DB_HOST=%~2"
@@ -80,7 +81,7 @@ set "LOCAL_DEFAULTS_FILE=%~dp0.mysql-client.ini"
 set "DEFAULTS_OPT="
 if exist "%LOCAL_DEFAULTS_FILE%" (
   REM Keep DEFAULTS_OPT unquoted (no embedded quotes). We'll quote the whole token at invocation.
-  set "DEFAULTS_OPT=--defaults-extra-file=^"%LOCAL_DEFAULTS_FILE%^""
+  set "DEFAULTS_OPT=--defaults-extra-file=%LOCAL_DEFAULTS_FILE%"
 )
 
 
@@ -139,7 +140,10 @@ REM === BUILD AUTH/CONNECTION ARGUMENTS ===
 REM NOTE: --defaults-extra-file MUST go first.
 set "MYSQL_AUTH_OPTS="
 if defined DEFAULTS_OPT (
-  set "MYSQL_AUTH_OPTS=%DEFAULTS_OPT%"
+  REM Prefer the canonical form without wrapping the whole option token in quotes.
+  REM (This keeps cmd.exe parsing predictable and still supports spaces in the ini path.)
+  REM Quote only the value part, not the whole token.
+  set "MYSQL_AUTH_OPTS=--defaults-extra-file=^"%LOCAL_DEFAULTS_FILE%^""
 ) else (
   set "MYSQL_AUTH_OPTS=-h ""%DB_HOST%"" -P %DB_PORT% -u ""%DB_USER%"" -p%DB_PASS%"
 )
@@ -174,7 +178,12 @@ REM  -e "SELECT CONCAT(QUOTE(User),'@',QUOTE(Host)) FROM mysql.user WHERE User<>
 REM NOTE: Keep this as a single physical line.
 REM If there are trailing spaces after a line-continuation caret (^), cmd.exe can split the command
 REM and throw confusing errors like: "> was unexpected at this time."
+REM IMPORTANT: This script enables DelayedExpansion. In that mode, the "!" character is special in cmd.exe.
+REM So SQL fragments like "!=" can be mangled (e.g., "User!=''" becomes "User=''"), breaking the query.
+REM To prevent that, we temporarily DISABLE delayed expansion just for mysql.exe calls.
+setlocal DisableDelayedExpansion
 "%SQLBIN%%SQLCLI%" %MYSQL_AUTH_OPTS% %CONN_SSL_OPTS% -N -B -e "SELECT CONCAT(QUOTE(User),'@',QUOTE(Host)) FROM mysql.user WHERE User!='' AND User NOT IN ('root','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','mariadb.session','debian-sys-maint','healthchecker','rdsadmin')" >"%USERLIST%" 2>>"%LOG%"
+endlocal
 if errorlevel 1 (
   echo ERROR: Could not retrieve user list. See "%LOG%" for details.
   goto :end
@@ -190,7 +199,9 @@ for /f "usebackq delims=" %%U in ("%USERLIST%") do (
   echo CREATE USER IF NOT EXISTS %%U;>>"%USERDUMP%"
 
   REM Write SHOW GRANTS output to a temporary file. (AK: we could output them, but should add ';' after GRANT string...)
+  setlocal DisableDelayedExpansion
   "%SQLBIN%%SQLCLI%" %MYSQL_AUTH_OPTS% %CONN_SSL_OPTS% -N -B -e "SHOW GRANTS FOR %%U" >"%TMPGRANTS%" 2>>"%LOG%"
+  endlocal
 
   REM Read each GRANT line and append a semicolon
   for /f "usebackq delims=" %%G in ("%TMPGRANTS%") do (
