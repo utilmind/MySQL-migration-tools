@@ -228,7 +228,10 @@ if not "%SSL_CA%"=="" (
 
 REM Combined connection options for all SQL tools (mysql + mysqldump).
 REM Note: packet/buffer sizing options are appended to COMMON_OPTS (mysqldump-only) after capability checks.
-set "CONN_OPTS=%CONN_COMPRESS_OPTS% %CONN_SSL_OPTS% %CONN_VERIFY_CERT_OPTS%"
+REM Connection options for mysql.exe (includes verify-server-cert if supported)
+set "MYSQL_CONN_OPTS=%CONN_COMPRESS_OPTS% %CONN_SSL_OPTS% %CONN_VERIFY_CERT_OPTS%"
+REM Connection options for mysqldump.exe (NO verify-server-cert; keep it mysql-only)
+set "DUMP_CONN_OPTS=%CONN_COMPRESS_OPTS% %CONN_SSL_OPTS%"
 
 
 REM --routines/--events/--triggers: include stored routines, events, and triggers.
@@ -257,8 +260,10 @@ REM Make dumps more portable between servers (managed MySQL, MariaDB, different 
 REM Avoid embedding tablespace directives in CREATE TABLE.
 set "COMMON_OPTS=%COMMON_OPTS% --no-tablespaces"
 
-REM Append connection options (compression/SSL/max_allowed_packet).
-set "COMMON_OPTS=%COMMON_OPTS% %CONN_OPTS%"
+REM NOTE: Connection options are kept separate:
+REM   * MYSQL_CONN_OPTS is used only for mysql.exe calls
+REM   * DUMP_CONN_OPTS is used only for mysqldump.exe calls
+
 
 REM Do NOT inject SET @@GLOBAL.GTID_PURGED into the dump (safer for imports into existing replicas).
 REM Only enable this option if mysqldump actually supports it (older MySQL/MariaDB may not).
@@ -464,7 +469,7 @@ echo Getting database names from server
 if "%DBNAMES%" NEQ "" goto :mode_selection
 
 echo === Getting database list from %DB_HOST%:%DB_PORT% ...
-"%SQLCLI_EXE%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %CONN_OPTS% -N -B -e "SHOW DATABASES" > "%DBLIST%"
+"%SQLCLI_EXE%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %MYSQL_CONN_OPTS% -N -B -e "SHOW DATABASES" > "%DBLIST%"
 REM     this way could exclude system tables immediately, but this doesn't exports *empty* databases (w/o tables yet), which still could be important. So let's keep canonical SHOW DATABASES, then filter it.
 REM AK: Alternatively we could use `SELECT DISTINCT TABLE_SCHEMA FROM information_schema.tables WHERE TABLE_SCHEMA NOT IN ("information_schema", "performance_schema", "mysql", "sys");`,
 if errorlevel 1 (
@@ -562,7 +567,7 @@ for %%D in (!DBNAMES!) do (
 
 REM === Dump default table schemas, to be able to restore everything exactly as on original server ===
 echo Dumping table metadata to '%TABLE_SCHEMAS%'...
-"%SQLCLI_EXE%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %CONN_OPTS% -N -B -e "SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, ROW_FORMAT, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA IN (!DBNAMES_IN!) ORDER BY TABLE_SCHEMA, TABLE_NAME;" > "%TABLE_SCHEMAS%"
+"%SQLCLI_EXE%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %MYSQL_CONN_OPTS% -N -B -e "SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, ROW_FORMAT, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA IN (!DBNAMES_IN!) ORDER BY TABLE_SCHEMA, TABLE_NAME;" > "%TABLE_SCHEMAS%"
 if errorlevel 1 (
   echo ERROR: Could not dump table metadata.
   goto :end
@@ -610,7 +615,7 @@ echo Raw output file will be: "%ALLDATA%"
 
 REM Single mysqldump call for all databases
 REM (stderr goes to log, output goes directly to ALLDATA)
-"%SQLDUMP_EXE%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %COMMON_OPTS% --databases !DBNAMES! --result-file="%ALLDATA%" 2>> "%LOG%"
+"%SQLDUMP_EXE%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %COMMON_OPTS% %DUMP_CONN_OPTS% --databases !DBNAMES! --result-file="%ALLDATA%" 2>> "%LOG%"
 
 if errorlevel 1 (
   echo [%DATE% %TIME%] ERROR dumping multiple databases >> "%LOG%"
@@ -676,7 +681,7 @@ if "%TARGET%"=="" (
 
 echo --- Dumping database '%DBNAME%' to '%TARGET%'...
 REM Alternatively we could specify --result-file="%TARGET%", but we want error log anyway.
-"%SQLDUMP_EXE%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %COMMON_OPTS% "%DBNAME%" 1>> "%TARGET%" 2>> "%LOG%"
+"%SQLDUMP_EXE%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %COMMON_OPTS% %DUMP_CONN_OPTS% "%DBNAME%" 1>> "%TARGET%" 2>> "%LOG%"
 if errorlevel 1 (
   REM These messages are good to search, so append the following line %LOG% to log...
   echo [%DATE% %TIME%] ERROR dumping database '%DBNAME%' >> "%LOG%"
