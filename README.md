@@ -191,7 +191,7 @@ password=SuperSecretPassword
 default-character-set=utf8mb4
 
 # Optional SSL settings:
-# ssl-ca=C:\certs\rds-global-bundle.pem
+# ssl-ca=C:/certs/rds-global-bundle.pem
 # ssl-mode=REQUIRED
 
 [mysqldump]
@@ -222,6 +222,8 @@ net-buffer-length=4194304
   tool-specific overrides.
 - You **do not need** to duplicate credentials between sections — MySQL clients inherit
   shared options automatically.
+- Use `/`-slashes in `ssl-ca` path in Windows, because `\` (backslashes) are misinterpreted
+  as escape character. Or alternatively use `\\`, double slashes.
 
 ---
 
