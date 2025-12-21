@@ -147,8 +147,6 @@ net_write_timeout=600
 
 ---
 
----
-
 ## 🔐 Secure credentials via `.ini` file (Windows)
 
 On Windows, all `*.bat` scripts (`db-dump.bat`, `db-import.bat`, `dump-users-and-grants.bat`)
