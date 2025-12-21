@@ -26,6 +26,15 @@ set "DB_PASS="
 
 REM Optional: increase client max_allowed_packet for large rows/BLOBs.
 REM Example values: 64M, 256M, 1G
+REM
+REM IMPORTANT! This option increase value for the client application, mysql.exe.
+REM Please make sure that MySQL/MariaDB SERVER support also huge data packets.
+REM Add something like the following into your my.ini:
+REM     [mysqld]
+REM     max_allowed_packet=1G
+REM     net_read_timeout=600
+REM     net_write_timeout=600
+REM 
 set "MAX_ALLOWED_PACKET=1024M"
 
 REM Optional: set the network buffer size for mysqldump in bytes.
