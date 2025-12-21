@@ -175,9 +175,11 @@ if defined NET_BUFFER_LENGTH (
     )
 )
 
+REM === CLIENT CLI OPTIONS (mysql.exe, not mysqldump.exe) ===
 REM Add certificate verification flag only when the client supports it.
 set "CONN_VERIFY_CERT_OPTS="
 if not "%SSL_CA%"=="" (
+  REM This is --help for `mysql.exe`, don't confuse with --help for mysqldump.exe above. In theory the dump and client apps may have different versions, so detect both for safety.
   set "MYSQL_HELP_FILE=%TEMP%\mysql_help_%RANDOM%.tmp"
   findstr /C:"--ssl-verify-server-cert" "%MYSQL_HELP_FILE%" >nul 2>&1
   if not errorlevel 1 (
