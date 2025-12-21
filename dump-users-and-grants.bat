@@ -113,7 +113,7 @@ if not defined DEFAULTS_OPT (
     set /p "DB_PASS=> "
     echo.
   )
-  
+
 )
 
 if not exist "%OUTDIR%" mkdir "%OUTDIR%"

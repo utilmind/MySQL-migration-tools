@@ -28,13 +28,13 @@ REM Optional: increase client max_allowed_packet for large rows/BLOBs.
 REM Example values: 64M, 256M, 1G
 REM
 REM IMPORTANT! This option increase value for the client application, mysql.exe.
-REM Please make sure that MySQL/MariaDB SERVER support also huge data packets.
+REM Please make sure that MySQL/MariaDB SERVER is ALSO supports huge data packets.
 REM Add something like the following into your my.ini:
 REM     [mysqld]
 REM     max_allowed_packet=1G
 REM     net_read_timeout=600
 REM     net_write_timeout=600
-REM 
+REM
 set "MAX_ALLOWED_PACKET=1024M"
 
 REM Optional: set the network buffer size for mysqldump in bytes.
@@ -45,6 +45,33 @@ set "NET_BUFFER_LENGTH=4194304"
 REM set "SQLCLI=mariadb.exe"
 set "SQLCLI=mysql.exe"
 REM ============== END OF CONFIG ==================
+REM ================== OPTIONAL LOCAL INI ==================
+REM If a local ini file exists near this script, use it for connection options.
+REM This keeps passwords out of the .bat and allows per-repo local settings.
+REM
+REM File name (relative to script directory): .mysql-client.ini
+set "SCRIPT_DIR=%~dp0"
+set "LOCAL_INI=%SCRIPT_DIR%.mysql-client.ini"
+set "DEFAULTS_OPT="
+set "USE_LOCAL_INI=0"
+if exist "%LOCAL_INI%" (
+    set "DEFAULTS_OPT=--defaults-extra-file=""%LOCAL_INI%"""
+    set "USE_LOCAL_INI=1"
+)
+
+REM If ini is present, do NOT pass -u/-p or packet/buffer values on CLI,
+REM because command-line options override option-file values.
+if "%USE_LOCAL_INI%"=="1" (
+    set "DB_USER="
+    set "DB_PASS="
+    set "MAX_ALLOWED_PACKET="
+    set "NET_BUFFER_LENGTH="
+)
+REM ============== END OPTIONAL LOCAL INI ==================
+
+REM Build auth options (empty if local ini is used)
+set "AUTH_OPTS=-u ""%DB_USER%"" -p%DB_PASS%"
+if "%USE_LOCAL_INI%"=="1" set "AUTH_OPTS="
 REM Use UTF-8 encoding for output, if needed
 chcp 65001 >nul
 
@@ -132,7 +159,11 @@ REM At this point, WORK_SQL points to the .sql file to import
 REM Remove old log if exists.
 if exist "%LOGFILE%" del "%LOGFILE%"
 
-echo Importing "%WORK_SQL%" as '%DB_USER%'...
+if "%USE_LOCAL_INI%"=="1" (
+    echo Importing "%WORK_SQL%" using local ini credentials...
+) else (
+    echo Importing "%WORK_SQL%" as '%DB_USER%'...
+)
 
 REM Run MySQL client:
 REM   -u root -p        -> ask for password
@@ -140,9 +171,9 @@ REM   --verbose         -> show what is being executed (sometimes noisy, comment
 REM   --force           -> continue import even if SQL errors occur. You can review all errors together in the log.
 REM   source file       -> read SQL commands from dump file
 REM   2> "%LOGFILE%"    -> send ONLY errors (stderr) to _errors-import.log
-%SQLCLI% -u "%DB_USER%" -p%DB_PASS% %IMPORT_OPTS% --force -e "source %WORK_SQL%" 2> "%LOGFILE%"
-REM mysql -u "%DB_USER%" -p%DB_PASS% %IMPORT_OPTS% --verbose --force -e "source %WORK_SQL%" 2> "%LOGFILE%"
-REM mysql -u "%DB_USER%" -p%DB_PASS% %IMPORT_OPTS% --force -e "source %WORK_SQL%"
+%SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% %IMPORT_OPTS% --force -e "source %WORK_SQL%" 2> "%LOGFILE%"
+REM %SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% %IMPORT_OPTS% --verbose --force -e "source %WORK_SQL%" 2> "%LOGFILE%"
+REM %SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% %IMPORT_OPTS% --force -e "source %WORK_SQL%"
 
 REM Save MySQL process exit code (connection / fatal errors)
 set "MYSQL_ERRORLEVEL=%ERRORLEVEL%"
