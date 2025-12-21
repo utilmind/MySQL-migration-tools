@@ -147,6 +147,86 @@ net_write_timeout=600
 
 ---
 
+---
+
+## 🔐 Secure credentials via `.ini` file (Windows)
+
+On Windows, all `*.bat` scripts (`db-dump.bat`, `db-import.bat`, `dump-users-and-grants.bat`)
+support **optional MySQL client option files** (`.ini` / `.cnf`) to avoid hardcoding passwords
+directly inside batch scripts.
+
+### How it works
+
+If a file named:
+
+```
+.mysql-client.ini
+```
+
+exists **in the same directory** as the `.bat` script, it will be automatically used for
+connections via the MySQL option:
+
+```
+--defaults-extra-file=.mysql-client.ini
+```
+
+If the file **does not exist**, the scripts behave exactly as before and use the
+hardcoded/default settings inside the `.bat` file.
+
+> The `.ini` file is **optional**, but when present, its settings have **higher priority**
+> than values hardcoded in the batch scripts.
+
+### Recommended usage
+
+- Store credentials and connection-related settings in `.mysql-client.ini`
+- Add this file to `.gitignore`
+- Restrict file permissions so only your user can read it
+
+### Example `.mysql-client.ini`
+
+```ini
+[client]
+host=127.0.0.1
+port=3306
+user=backup_user
+password=SuperSecretPassword
+default-character-set=utf8mb4
+
+# Optional SSL settings:
+# ssl-ca=C:\certs\rds-global-bundle.pem
+# ssl-mode=REQUIRED
+
+[mysqldump]
+# Dump-specific options (optional)
+max-allowed-packet=1024M
+net-buffer-length=4194304
+single-transaction
+quick
+routines
+events
+triggers
+hex-blob
+no-tablespaces
+set-gtid-purged=OFF
+column-statistics=0
+
+[mysql]
+# Import-specific options (optional)
+max-allowed-packet=1024M
+net-buffer-length=4194304
+```
+
+### Notes
+
+- Common connection settings (`host`, `user`, `password`, SSL, charset) should be placed
+  in the `[client]` section.
+- The `[mysqldump]` and `[mysql]` sections are **optional** and only needed if you want
+  tool-specific overrides.
+- You **do not need** to duplicate credentials between sections — MySQL clients inherit
+  shared options automatically.
+
+---
+
 ## 🐧 Linux
 
 ### Database Dumps (single database only)
