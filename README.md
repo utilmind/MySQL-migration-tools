@@ -137,7 +137,7 @@ db-import.bat source-dump.sql[.gz]|source-dump.zip|source-dump.rar
 
 ⚠️ If you are importing dumps with huge blobs, make sure that your MySQL/MariaDB **server** is able to accept packets with size used in your dumps. Add something like the following into your `my.ini` (or `my.cnf`).
 
-```
+```ini
 [mysqld]
 ; Allow importing of huge blobs
 max_allowed_packet=1G
