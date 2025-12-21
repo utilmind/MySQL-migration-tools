@@ -60,6 +60,13 @@ set "DB_USER=root"
 REM Password: put real password here, or leave EMPTY to be prompted. Do not expose your password in public!!
 set "DB_PASS="
 
+REM Optional: local option file next to this script (NOT committed). If present, it will be passed to mysql/mysqldump via --defaults-extra-file.
+REM File name (relative to this .bat): ".mysql-client.ini"
+set "LOCAL_DEFAULTS_FILE=%~dp0.mysql-client.ini"
+set "USE_DEFAULTS_FILE=0"
+if exist "%LOCAL_DEFAULTS_FILE%" set "USE_DEFAULTS_FILE=1"
+
+
 REM Optional: increase client max_allowed_packet for large rows/BLOBs.
 REM Example values: 64M, 256M, 1G
 set "MAX_ALLOWED_PACKET=1024M"
@@ -190,10 +197,17 @@ if not "%DB_HOST%"=="" (
   )
 )
 
+REM If a local defaults file is used, do not force SSL/compress settings via CLI (ini must take precedence).
+if "%USE_DEFAULTS_FILE%"=="1" (
+  set "CONN_SSL_OPTS="
+  set "CONN_COMPRESS_OPTS="
+)
+
+
 REM Optional: raise packet limit for large rows/BLOBs (client-side).
 REM IMPORTANT: The server-side max_allowed_packet must also allow this value.
 REM Only enable this option if mysqldump actually supports it (older builds may not).
-if not "%MAX_ALLOWED_PACKET%"=="" (
+if "%USE_DEFAULTS_FILE%"=="0" if not "%MAX_ALLOWED_PACKET%"=="" (
     findstr /C:"--max-allowed-packet" "%MYSQLDUMP_HELP_FILE%" >nul 2>&1
     if not errorlevel 1 (
         set "COMMON_OPTS=%COMMON_OPTS% --max-allowed-packet=%MAX_ALLOWED_PACKET%"
@@ -202,7 +216,7 @@ if not "%MAX_ALLOWED_PACKET%"=="" (
 
 REM If requested, set the network buffer size (mysqldump client-side) in bytes.
 REM Only enable this option if mysqldump actually supports it (older builds may not).
-if defined NET_BUFFER_LENGTH (
+if "%USE_DEFAULTS_FILE%"=="0" if defined NET_BUFFER_LENGTH (
     if not "%NET_BUFFER_LENGTH%"=="" (
         findstr /C:"--net-buffer-length" "%MYSQLDUMP_HELP_FILE%" >nul 2>&1
         if not errorlevel 1 (
@@ -214,7 +228,7 @@ if defined NET_BUFFER_LENGTH (
 REM === CLIENT CLI OPTIONS (mysql.exe, not mysqldump.exe) ===
 REM Add certificate verification flag only when the client supports it.
 set "CONN_VERIFY_CERT_OPTS="
-if not "%SSL_CA%"=="" (
+if "%USE_DEFAULTS_FILE%"=="0" if not "%SSL_CA%"=="" (
   REM This is --help for `mysql.exe`, don't confuse with --help for mysqldump.exe above. In theory the dump and client apps may have different versions, so detect both for safety.
   set "MYSQL_HELP_FILE=%TEMP%\mysql_help_%RANDOM%.tmp"
   "%SQLCLI_EXE%" --help >"%MYSQL_HELP_FILE%" 2>&1
@@ -333,9 +347,19 @@ REM Flag: password was requested interactively from user
 set "PASS_WAS_PROMPTED=0"
 if "%~1"=="" set "NO_ARGS=1"
 
+set "DEFAULTS_OPT="
+if "%USE_DEFAULTS_FILE%"=="1" (
+  set "DEFAULTS_OPT=--defaults-extra-file=""%LOCAL_DEFAULTS_FILE%"""
+)
+
+
 
 REM Show general connection info first
-echo Preparing database dump from %DB_HOST%:%DB_PORT% on behalf of '%DB_USER%'...
+if defined DEFAULTS_OPT (
+  echo Preparing database dump using "%LOCAL_DEFAULTS_FILE%"
+) else (
+  echo Preparing database dump from %DB_HOST%:%DB_PORT% on behalf of '%DB_USER%'...
+)
 
 REM === PARSE CLI ARGUMENTS BEFORE ANY USER INPUT ===
 :parse_args
@@ -445,6 +469,22 @@ if "%NO_ARGS%"=="1" if "%PASS_WAS_PROMPTED%"=="0" (
 )
 
 REM Create output directory
+
+REM === BUILD AUTH/CONNECTION ARGUMENTS ===
+REM NOTE: --defaults-extra-file MUST go first.
+set "MYSQL_AUTH_OPTS="
+set "DUMP_AUTH_OPTS="
+if defined DEFAULTS_OPT (
+  REM When using option file, do not pass hardcoded connection/SSL params on CLI (so ini can override).
+  set "MYSQL_AUTH_OPTS=%DEFAULTS_OPT%"
+  set "DUMP_AUTH_OPTS=%DEFAULTS_OPT%"
+  REM Also disable script-side SSL CLI options (they would override ini).
+  set "MYSQL_CONN_OPTS="
+  set "DUMP_CONN_OPTS="
+) else (
+  set "MYSQL_AUTH_OPTS=-h ""%DB_HOST%"" -P %DB_PORT% -u ""%DB_USER%"" -p%DB_PASS% %MYSQL_CONN_OPTS%"
+  set "DUMP_AUTH_OPTS=-h ""%DB_HOST%"" -P %DB_PORT% -u ""%DB_USER%"" -p%DB_PASS% %DUMP_CONN_OPTS%"
+)
 if not exist "%OUTDIR%" mkdir "%OUTDIR%"
 
 
@@ -456,7 +496,7 @@ if "%EXPORT_USERS_AND_GRANTS%"=="1" (
   REM To prevent accidental "--skip-ssl"+"--ssl-ca" combos, we pass an effective SKIP_SSL=0 when SSL_CA is set.
   set "CHILD_SKIP_SSL=%SKIP_SSL%"
   if not "%SSL_CA%"=="" set "CHILD_SKIP_SSL=0"
-  @call "%~dp0dump-users-and-grants.bat" "%SQLBIN%" "%DB_HOST%" "%DB_PORT%" "%DB_USER%" "%DB_PASS%" "%OUTDIR%" "%USERDUMP%" "%CHILD_SKIP_SSL%" "%SSL_CA%"
+  @call "%~dp0dump-users-and-grants.bat" "%SQLBIN%" "%DB_HOST%" "%DB_PORT%" "%DB_USER%" "%DB_PASS%" "%OUTDIR%" "%USERDUMP%" "%CHILD_SKIP_SSL%" "%SSL_CA%" "%LOCAL_DEFAULTS_FILE%"
   if not exist "%USERDUMP%" (
     REM echo WARNING: "%USERDUMP%" not found, will create dump with data only, without users/grants.
     goto :end
@@ -469,7 +509,7 @@ echo Getting database names from server
 if "%DBNAMES%" NEQ "" goto :mode_selection
 
 echo === Getting database list from %DB_HOST%:%DB_PORT% ...
-"%SQLCLI_EXE%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %MYSQL_CONN_OPTS% -N -B -e "SHOW DATABASES" > "%DBLIST%"
+"%SQLCLI_EXE%" %MYSQL_AUTH_OPTS% -N -B -e "SHOW DATABASES" > "%DBLIST%"
 REM     this way could exclude system tables immediately, but this doesn't exports *empty* databases (w/o tables yet), which still could be important. So let's keep canonical SHOW DATABASES, then filter it.
 REM AK: Alternatively we could use `SELECT DISTINCT TABLE_SCHEMA FROM information_schema.tables WHERE TABLE_SCHEMA NOT IN ("information_schema", "performance_schema", "mysql", "sys");`,
 if errorlevel 1 (
@@ -567,7 +607,7 @@ for %%D in (!DBNAMES!) do (
 
 REM === Dump default table schemas, to be able to restore everything exactly as on original server ===
 echo Dumping table metadata to '%TABLE_SCHEMAS%'...
-"%SQLCLI_EXE%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %MYSQL_CONN_OPTS% -N -B -e "SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, ROW_FORMAT, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA IN (!DBNAMES_IN!) ORDER BY TABLE_SCHEMA, TABLE_NAME;" > "%TABLE_SCHEMAS%"
+"%SQLCLI_EXE%" %MYSQL_AUTH_OPTS% -N -B -e "SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, ROW_FORMAT, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA IN (!DBNAMES_IN!) ORDER BY TABLE_SCHEMA, TABLE_NAME;" > "%TABLE_SCHEMAS%"
 if errorlevel 1 (
   echo ERROR: Could not dump table metadata.
   goto :end
@@ -615,7 +655,7 @@ echo Raw output file will be: "%ALLDATA%"
 
 REM Single mysqldump call for all databases
 REM (stderr goes to log, output goes directly to ALLDATA)
-"%SQLDUMP_EXE%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %COMMON_OPTS% %DUMP_CONN_OPTS% --databases !DBNAMES! --result-file="%ALLDATA%" 2>> "%LOG%"
+"%SQLDUMP_EXE%" %DUMP_AUTH_OPTS% %COMMON_OPTS% --databases !DBNAMES! --result-file="%ALLDATA%" 2>> "%LOG%"
 
 if errorlevel 1 (
   echo [%DATE% %TIME%] ERROR dumping multiple databases >> "%LOG%"
@@ -681,7 +721,7 @@ if "%TARGET%"=="" (
 
 echo --- Dumping database '%DBNAME%' to '%TARGET%'...
 REM Alternatively we could specify --result-file="%TARGET%", but we want error log anyway.
-"%SQLDUMP_EXE%" -h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %COMMON_OPTS% %DUMP_CONN_OPTS% "%DBNAME%" 1>> "%TARGET%" 2>> "%LOG%"
+"%SQLDUMP_EXE%" %DUMP_AUTH_OPTS% %COMMON_OPTS% "%DBNAME%" 1>> "%TARGET%" 2>> "%LOG%"
 if errorlevel 1 (
   REM These messages are good to search, so append the following line %LOG% to log...
   echo [%DATE% %TIME%] ERROR dumping database '%DBNAME%' >> "%LOG%"
