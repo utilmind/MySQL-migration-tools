@@ -181,10 +181,13 @@ set "CONN_VERIFY_CERT_OPTS="
 if not "%SSL_CA%"=="" (
   REM This is --help for `mysql.exe`, don't confuse with --help for mysqldump.exe above. In theory the dump and client apps may have different versions, so detect both for safety.
   set "MYSQL_HELP_FILE=%TEMP%\mysql_help_%RANDOM%.tmp"
-  findstr /C:"--ssl-verify-server-cert" "%MYSQL_HELP_FILE%" >nul 2>&1
+  "%SQLBIN%%SQLCLI%" --help >"%MYSQL_HELP_FILE%" 2>&1
   if not errorlevel 1 (
-    set "CONN_VERIFY_CERT_OPTS=--ssl-verify-server-cert"
+    findstr /C:"--ssl-verify-server-cert" "%MYSQL_HELP_FILE%" >nul 2>&1
+    if not errorlevel 1 set "CONN_VERIFY_CERT_OPTS=--ssl-verify-server-cert"
   )
+  del "%MYSQL_HELP_FILE%" >nul 2>&1
+  set "MYSQL_HELP_FILE="
 )
 
 REM Combined connection options for all SQL tools (mysql + mysqldump).
