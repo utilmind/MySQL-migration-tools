@@ -59,19 +59,15 @@ if exist "%LOCAL_INI%" (
     set "USE_LOCAL_INI=1"
 )
 
-REM If ini is present, do NOT pass -u/-p or packet/buffer values on CLI,
-REM because command-line options override option-file values.
-if "%USE_LOCAL_INI%"=="1" (
-    set "DB_USER="
-    set "DB_PASS="
-    set "MAX_ALLOWED_PACKET="
-    set "NET_BUFFER_LENGTH="
-)
+REM If ini is present, do NOT pass -u/-p on CLI, because command-line options override
+REM option-file values. Also avoid passing a bare "-p" (which would always trigger an interactive prompt).
 REM ============== END OPTIONAL LOCAL INI ==================
 
-REM Build auth options (empty if local ini is used)
-set "AUTH_OPTS=-u ""%DB_USER%"" -p%DB_PASS%"
-if "%USE_LOCAL_INI%"=="1" set "AUTH_OPTS="
+REM Build auth options only when NOT using local ini.
+set "AUTH_OPTS="
+if "%USE_LOCAL_INI%"=="0" (
+    set "AUTH_OPTS=-u ""%DB_USER%"" -p%DB_PASS%"
+)
 REM Use UTF-8 encoding for output, if needed
 chcp 65001 >nul
 
@@ -96,6 +92,12 @@ if errorlevel 1 (
 REM Extra mysql client options for import (built only if supported by this mysql.exe)
 set "IMPORT_OPTS="
 
+REM When using --defaults-extra-file, avoid passing packet/buffer sizing options on CLI,
+REM because command-line options override option-file values.
+if "%USE_LOCAL_INI%"=="1" (
+    goto :after_import_opts
+)
+
 REM Optional: increase client max_allowed_packet for large rows/BLOBs
 if defined MAX_ALLOWED_PACKET (
     if not "%MAX_ALLOWED_PACKET%"=="" (
@@ -119,6 +121,8 @@ if defined NET_BUFFER_LENGTH (
         )
     )
 )
+
+:after_import_opts
 
 REM Cleanup temporary mysqldump --help file (no longer needed after building COMMON_OPTS)
 if defined MYSQL_HELP_FILE (
