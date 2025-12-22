@@ -206,8 +206,8 @@ events
 triggers
 hex-blob
 no-tablespaces
-set-gtid-purged=OFF
-column-statistics=0
+;set-gtid-purged=OFF
+;column-statistics=0
 
 [mysql]
 ; Import-specific options (optional)
