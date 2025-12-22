@@ -80,8 +80,7 @@ REM Instead, we probe the ini next to this script.
 set "LOCAL_DEFAULTS_FILE=%~dp0.mysql-client.ini"
 set "DEFAULTS_OPT="
 if exist "%LOCAL_DEFAULTS_FILE%" (
-  REM Keep DEFAULTS_OPT unquoted (no embedded quotes). We'll quote the whole token at invocation.
-  set "DEFAULTS_OPT=--defaults-extra-file=%LOCAL_DEFAULTS_FILE%"
+  set "DEFAULTS_OPT=%LOCAL_DEFAULTS_FILE%"
 )
 
 
@@ -143,7 +142,7 @@ if defined DEFAULTS_OPT (
   REM Prefer the canonical form without wrapping the whole option token in quotes.
   REM (This keeps cmd.exe parsing predictable and still supports spaces in the ini path.)
   REM Quote only the value part, not the whole token.
-  set "MYSQL_AUTH_OPTS=%DEFAULTS_OPT%"
+  set "MYSQL_AUTH_OPTS=--defaults-extra-file=""%DEFAULTS_OPT%"""
 ) else (
   REM Build SSL-related options. SSL_CA has priority over SKIP_SSL (mutually exclusive).
   REM Note: --ssl-verify-server-cert is not supported by every client build, so we enable it only if available.
@@ -167,13 +166,8 @@ if defined DEFAULTS_OPT (
 )
 
 
-REM "%SQLBIN%%SQLCLI%" %MYSQL_AUTH_OPTS% %CONN_SSL_OPTS% -N -B ^
-REM  -e "SELECT CONCAT(QUOTE(User),'@',QUOTE(Host)) FROM mysql.user WHERE User<>'' AND User NOT IN ('root','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','mariadb.session','debian-sys-maint','healthchecker','rdsadmin')" >"%USERLIST%" 2>>"%LOG%"
-
-echo "%SQLBIN%%SQLCLI%" %MYSQL_AUTH_OPTS% -N -B -e "SELECT CONCAT(QUOTE(User),'@',QUOTE(Host)) FROM mysql.user WHERE User NOT IN ('', 'root','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','mariadb.session','debian-sys-maint','healthchecker','rdsadmin')"
-exit
-
-"%SQLBIN%%SQLCLI%" %MYSQL_AUTH_OPTS% -N -B -e "SELECT CONCAT(QUOTE(User),'@',QUOTE(Host)) FROM mysql.user WHERE User NOT IN ('', 'root','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','mariadb.session','debian-sys-maint','healthchecker','rdsadmin')" >"%USERLIST%" 2>>"%LOG%"
+"%SQLBIN%%SQLCLI%" %MYSQL_AUTH_OPTS% -N -B ^
+    -e "SELECT CONCAT(QUOTE(User),'@',QUOTE(Host)) FROM mysql.user WHERE User NOT IN ('', 'root','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','mariadb.session','debian-sys-maint','healthchecker','rdsadmin')" >"%USERLIST%" 2>>"%LOG%"
 if errorlevel 1 (
   echo ERROR: Could not retrieve user list. See "%LOG%" for details.
   goto :end
