@@ -170,9 +170,10 @@ if defined DEFAULTS_OPT (
 REM "%SQLBIN%%SQLCLI%" %MYSQL_AUTH_OPTS% %CONN_SSL_OPTS% -N -B ^
 REM  -e "SELECT CONCAT(QUOTE(User),'@',QUOTE(Host)) FROM mysql.user WHERE User<>'' AND User NOT IN ('root','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','mariadb.session','debian-sys-maint','healthchecker','rdsadmin')" >"%USERLIST%" 2>>"%LOG%"
 
-echo "%SQLBIN%%SQLCLI%" %MYSQL_AUTH_OPTS% %CONN_SSL_OPTS% -N -B -e "SELECT CONCAT(QUOTE(User),'@',QUOTE(Host)) FROM mysql.user WHERE User NOT IN ('', 'root','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','mariadb.session','debian-sys-maint','healthchecker','rdsadmin')"
+echo "%SQLBIN%%SQLCLI%" %MYSQL_AUTH_OPTS% -N -B -e "SELECT CONCAT(QUOTE(User),'@',QUOTE(Host)) FROM mysql.user WHERE User NOT IN ('', 'root','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','mariadb.session','debian-sys-maint','healthchecker','rdsadmin')"
+exit
 
-"%SQLBIN%%SQLCLI%" %MYSQL_AUTH_OPTS% %CONN_SSL_OPTS% -N -B -e "SELECT CONCAT(QUOTE(User),'@',QUOTE(Host)) FROM mysql.user WHERE User NOT IN ('', 'root','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','mariadb.session','debian-sys-maint','healthchecker','rdsadmin')" >"%USERLIST%" 2>>"%LOG%"
+"%SQLBIN%%SQLCLI%" %MYSQL_AUTH_OPTS% -N -B -e "SELECT CONCAT(QUOTE(User),'@',QUOTE(Host)) FROM mysql.user WHERE User NOT IN ('', 'root','mysql.sys','mysql.session','mysql.infoschema','mariadb.sys','mariadb.session','debian-sys-maint','healthchecker','rdsadmin')" >"%USERLIST%" 2>>"%LOG%"
 if errorlevel 1 (
   echo ERROR: Could not retrieve user list. See "%LOG%" for details.
   goto :end
