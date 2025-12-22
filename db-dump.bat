@@ -531,10 +531,9 @@ if "%EXPORT_USERS_AND_GRANTS%"=="1" (
 
 REM If DB names are passed as arguments, use them directly.
 REM Otherwise, query server for list of non-system DBs.
-echo Getting database names from server
 if "%DBNAMES%" NEQ "" goto :mode_selection
 
-echo === Getting database list from %DB_HOST%:%DB_PORT% ...
+echo === Getting database list...
 "%SQLCLI_EXE%" %MYSQL_AUTH_OPTS% -N -B -e "SHOW DATABASES" > "%DBLIST%"
 REM     this way could exclude system tables immediately, but this doesn't exports *empty* databases (w/o tables yet), which still could be important. So let's keep canonical SHOW DATABASES, then filter it.
 REM AK: Alternatively we could use `SELECT DISTINCT TABLE_SCHEMA FROM information_schema.tables WHERE TABLE_SCHEMA NOT IN ("information_schema", "performance_schema", "mysql", "sys");`,
