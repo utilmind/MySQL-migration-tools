@@ -201,6 +201,7 @@ max-allowed-packet=1024M
 net-buffer-length=4194304
 single-transaction
 quick
+compress
 routines
 events
 triggers
