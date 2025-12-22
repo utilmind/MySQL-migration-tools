@@ -352,7 +352,7 @@ set "DEFAULTS_OPT="
 if "%USE_DEFAULTS_FILE%"=="1" (
   REM IMPORTANT: Do NOT embed extra quotes into the option value.
   REM We keep the raw path in the option and quote the whole argument at call site. So, no ""%LOCAL_DEFAULTS_FILE%"" here.
-  set "DEFAULTS_OPT=--defaults-extra-file=%LOCAL_DEFAULTS_FILE%"
+  set "DEFAULTS_OPT=%LOCAL_DEFAULTS_FILE%"
 )
 
 
@@ -500,8 +500,8 @@ set "DUMP_AUTH_OPTS="
 if defined DEFAULTS_OPT (
   REM When using option file, do not pass hardcoded connection/SSL params on CLI (so ini can override).
   REM Quote the whole argument so paths with spaces work (e.g. C:\Program Files\...).
-  set "MYSQL_AUTH_OPTS=\"%DEFAULTS_OPT%\""
-  set "DUMP_AUTH_OPTS=\"%DEFAULTS_OPT%\""
+  set "MYSQL_AUTH_OPTS=--defaults-extra-file=""%DEFAULTS_OPT%"""
+  set "DUMP_AUTH_OPTS=--defaults-extra-file=""%DEFAULTS_OPT%"""
   REM Also disable script-side SSL CLI options (they would override ini).
   set "MYSQL_CONN_OPTS="
   set "DUMP_CONN_OPTS="
