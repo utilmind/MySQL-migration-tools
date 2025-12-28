@@ -484,7 +484,7 @@ if not defined DEFAULTS_OPT  (
 
   REM === Pause only when user did NOT enter a password AND no params were given ===
   REM If we use a local ini, skip the pause.
-  if "%NO_ARGS%"=="1" if "%PASS_WAS_PROMPTED%"=="0" (
+  if "%NO_ARGS%"=="1" if "!PASS_WAS_PROMPTED!"=="0" (
     echo.
     pause
     echo.
