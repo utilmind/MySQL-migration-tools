@@ -100,9 +100,9 @@ if defined SQLBIN (
     set "SQLBIN=%SQLBIN%\"
   )
 
-  if not exist "%SQLBIN%%SQLCLI%" (
-    echo ERROR: %SQLCLI% not found at "%SQLBIN%".
-    echo Please open the '%~nx0', and edit the configuration, particularly the path in SQLBIN variable.
+  if not exist "!SQLBIN!%SQLCLI%" (
+    echo ERROR: %SQLCLI% not found at "!SQLBIN!".
+    echo Please edit the configuration to provide correct path in SQLBIN variable for '%~nx0'.
     goto :end
   )
 )
