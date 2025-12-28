@@ -172,12 +172,13 @@ if "%USE_LOCAL_INI%"=="1" (
 REM Run MySQL client:
 REM   -u root -p        -> ask for password
 REM   --verbose         -> show what is being executed (sometimes noisy, commented out below)
+REM   --comments        -> don't strip comments
+REM   --bvinary-mode    -> disable \0 interpretation and \r\n translation.
 REM   --force           -> continue import even if SQL errors occur. You can review all errors together in the log.
 REM   source file       -> read SQL commands from dump file
 REM   2> "%LOGFILE%"    -> send ONLY errors (stderr) to _errors-import.log
-%SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% %IMPORT_OPTS% --force -e "source %WORK_SQL%" 2> "%LOGFILE%"
-REM %SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% %IMPORT_OPTS% --verbose --force -e "source %WORK_SQL%" 2> "%LOGFILE%"
-REM %SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% %IMPORT_OPTS% --force -e "source %WORK_SQL%"
+%SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% %IMPORT_OPTS% --comments --binary-mode --force < "%WORK_SQL%" 2> "%LOGFILE%"
+REM %SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% %IMPORT_OPTS% --verbose --comments --binary-mode --force -e "source %WORK_SQL%" 2> "%LOGFILE%"
 
 REM Save MySQL process exit code (connection / fatal errors)
 set "MYSQL_ERRORLEVEL=%ERRORLEVEL%"
