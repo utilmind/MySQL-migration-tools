@@ -20,10 +20,12 @@ REM ======================================================================
 REM ================== CONFIG ==================
 REM Log file name
 set "LOGFILE=_errors-import.log"
+REM Connection params (leave DB_HOST/DB_PORT default if local)
+set "DB_HOST=localhost"
+set "DB_PORT=3306"
 set "DB_USER=root"
-REM Password: put real password here, or leave EMPTY to be prompted. Do not expose your password in public!!
+REM Password: put real password here, or leave EMPTY to be prompted. NEVER EXPOSE YOUR PASSWORD to public or in any kind of Git repos!!
 set "DB_PASS="
-
 REM Optional: increase client max_allowed_packet for large rows/BLOBs.
 REM Example values: 64M, 256M, 1G
 REM
@@ -44,6 +46,10 @@ set "NET_BUFFER_LENGTH=4194304"
 
 REM set "SQLCLI=mariadb.exe"
 set "SQLCLI=mysql.exe"
+REM Replace 'python' to 'python3' or 'py', depending under which name the Python interpreter is registered in your system.
+set "PRE_PROCESSOR=python ./bash/pre-import.py"
+REM Collation map file. Pairs of legacy collations -> new collations.
+set "COLLATION_MAP=collation-map.json"
 REM ============== END OF CONFIG ==================
 REM ================== OPTIONAL LOCAL INI ==================
 REM If a local ini file exists near this script, use it for connection options.
@@ -66,13 +72,13 @@ REM ============== END OPTIONAL LOCAL INI ==================
 REM Build auth options only when NOT using local ini.
 set "AUTH_OPTS="
 if "%USE_LOCAL_INI%"=="0" (
-    set "AUTH_OPTS=-u ""%DB_USER%"" -p%DB_PASS%"
+    set "AUTH_OPTS=-h%DB_HOST% -P%DB_PORT% -u ""%DB_USER%"" -p%DB_PASS%"
 )
 REM Use UTF-8 encoding for output, if needed
 chcp 65001 >nul
 
 REM Make sure that mysql exists in PATH
-mysql --version >nul 2>&1
+%SQLCLI% --version >nul 2>&1
 if errorlevel 1 (
     echo [FAIL] mysql client not found in PATH or not executable.
     exit /b 1
@@ -169,19 +175,36 @@ if "%USE_LOCAL_INI%"=="1" (
     echo Importing "%WORK_SQL%" as '%DB_USER%'...
 )
 
+REM --- Preprocess dump (collation check + patch) BEFORE import ---
+set "DUMP_IN=%WORK_SQL%"
+REM Put patched dump into Windows TEMP and delete it after import
+set "PREIMPORT_SQL=%TEMP%\db-preimport-%RANDOM%%RANDOM%.sql"
+
+REM Option 1 (recommended): query collations directly from the target server
+set "MYSQL_LIST_COLLATIONS_CMD=%SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% -N"
+%PRE_PROCESSOR% --mysql-command "%MYSQL_LIST_COLLATIONS_CMD%" --map "%COLLATION_MAP%" "%DUMP_IN%" "%PREIMPORT_SQL%"
+if errorlevel 1 (
+    if exist "%PREIMPORT_SQL%" del "%PREIMPORT_SQL%" >nul 2>&1
+    exit /b 1
+)
+
 REM Run MySQL client:
-REM   -u root -p        -> ask for password
 REM   --verbose         -> show what is being executed (sometimes noisy, commented out below)
 REM   --comments        -> don't strip comments
 REM   --bvinary-mode    -> disable \0 interpretation and \r\n translation.
 REM   --force           -> continue import even if SQL errors occur. You can review all errors together in the log.
 REM   source file       -> read SQL commands from dump file
 REM   2> "%LOGFILE%"    -> send ONLY errors (stderr) to _errors-import.log
-%SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% %IMPORT_OPTS% --comments --binary-mode --force < "%WORK_SQL%" 2> "%LOGFILE%"
-REM %SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% %IMPORT_OPTS% --verbose --comments --binary-mode --force -e "source %WORK_SQL%" 2> "%LOGFILE%"
+%SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% %IMPORT_OPTS% --comments --binary-mode --force < "%PREIMPORT_SQL%" 2> "%LOGFILE%"
+REM %SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% %IMPORT_OPTS% --verbose --comments --binary-mode --force -e "source %PREIMPORT_SQL%" 2> "%LOGFILE%"
 
 REM Save MySQL process exit code (connection / fatal errors)
 set "MYSQL_ERRORLEVEL=%ERRORLEVEL%"
+
+REM Remove patched dump from TEMP
+if defined PREIMPORT_SQL (
+    if exist "%PREIMPORT_SQL%" del "%PREIMPORT_SQL%" >nul 2>&1
+)
 
 REM Check if log file has any content
 set "HAS_ERRORS=0"
@@ -339,9 +362,20 @@ exit /b 0
 
 
 :hasErrors
+REM Remove patched dump from TEMP (if created)
+if defined PREIMPORT_SQL (
+    if exist "%PREIMPORT_SQL%" del "%PREIMPORT_SQL%" >nul 2>&1
+)
+
 REM Clean up temp directory if it was created
 if defined TEMP_SQL_DIR (
     rd /s /q "%TEMP_SQL_DIR%" 2>nul
+)
+
+if not exist "%LOGFILE%" (
+    echo Import completed with ERRORS.
+    echo No log file was created: "%LOGFILE%"
+    exit /b 1
 )
 
 REM Count number of lines in log file
