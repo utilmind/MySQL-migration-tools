@@ -45,7 +45,7 @@ REM Example values: 1048576 (1 MiB), 4194304 (4 MiB)
 set "NET_BUFFER_LENGTH=4194304"
 
 REM Enable/disable dump pre-processing before import (0 = off, 1 = on)
-set "USE_PREIMPORT=1"
+set "USE_PREIMPORT=0"
 REM Replace 'python' to 'python3' or 'py', depending under which name the Python interpreter is registered in your system.
 set "PRE_PROCESSOR=python ./bash/pre-import.py"
 REM Collation map file. Pairs of legacy collations -> new collations.
@@ -70,9 +70,13 @@ if exist "%LOCAL_INI%" (
 REM If no local ini and DB_PASS is empty, ask once and reuse via MYSQL_PWD
 if "%USE_LOCAL_INI%"=="0" (
     if "%DB_PASS%"=="" (
-        set /p "DB_PASS=Enter password: "
+        echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^) or press Ctrl+C to terminate.
+        set /p "DB_PASS=> "
     )
-    REM mysql client will use MYSQL_PWD (avoid interactive prompt twice)
+)
+
+REM mysql client will use MYSQL_PWD (avoid interactive prompt twice)
+if "%USE_LOCAL_INI%"=="0" (
     set "MYSQL_PWD=%DB_PASS%"
 )
 REM If ini is present, do NOT pass -u/-p on CLI, because command-line options override
@@ -202,8 +206,6 @@ if "%USE_PREIMPORT%"=="1" (
     )
 
     set "IMPORT_SQL=%PREIMPORT_SQL%"
-REM ) else (
-REM    echo [INFO] Pre-import step is disabled. Importing the original dump as-is.
 )
 
 REM Run MySQL client:
@@ -376,6 +378,7 @@ endlocal & (
     set "WORK_SQL=%EXTRACTED_SQL%"
     set "TEMP_SQL_DIR=%TMPDIR%"
 )
+set "MYSQL_PWD="
 exit /b 0
 
 
