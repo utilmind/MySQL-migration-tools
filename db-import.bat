@@ -67,11 +67,17 @@ if exist "%LOCAL_INI%" (
     set "DEFAULTS_OPT=--defaults-extra-file=""%LOCAL_INI%"""
     set "USE_LOCAL_INI=1"
 )
-REM If no local ini and DB_PASS is empty, ask once and reuse via MYSQL_PWD
+REM Only use MYSQL_PWD when pre-import is enabled (otherwise let mysql prompt once)
 if "%USE_LOCAL_INI%"=="0" (
-    if "%DB_PASS%"=="" (
-        echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^) or press Ctrl+C to terminate.
-        set /p "DB_PASS=> "
+    if "%USE_PREIMPORT%"=="1" (
+        if "%DB_PASS%"=="" (
+            echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^) or press Ctrl+C to terminate.
+            set /p "DB_PASS=> "
+        )
+        set "MYSQL_PWD=%DB_PASS%"
+    ) else (
+        REM Pre-import disabled: do not set MYSQL_PWD (avoid warning); mysql will prompt once via -p
+        set "MYSQL_PWD="
     )
 )
 
@@ -87,6 +93,10 @@ REM Build auth options only when NOT using local ini.
 set "AUTH_OPTS="
 if "%USE_LOCAL_INI%"=="0" (
     set "AUTH_OPTS=-h%DB_HOST% -P%DB_PORT% -u ""%DB_USER%"""
+    if "%USE_PREIMPORT%"=="0" (
+        REM Ask password interactively once (no MYSQL_PWD)
+        set "AUTH_OPTS=%AUTH_OPTS% -p"
+    )
 )
 REM Use UTF-8 encoding for output, if needed
 chcp 65001 >nul
@@ -217,6 +227,7 @@ REM   source file       -> read SQL commands from dump file
 REM   2> "%LOGFILE%"    -> send ONLY errors (stderr) to _errors-import.log
 %SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% %IMPORT_OPTS% --comments --binary-mode --force < "%IMPORT_SQL%" 2> "%LOGFILE%"
 REM %SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% %IMPORT_OPTS% --verbose --comments --binary-mode --force -e "source %PREIMPORT_SQL%" 2> "%LOGFILE%"
+set "MYSQL_PWD="
 
 REM Save MySQL process exit code (connection / fatal errors)
 set "MYSQL_ERRORLEVEL=%ERRORLEVEL%"
@@ -378,7 +389,6 @@ endlocal & (
     set "WORK_SQL=%EXTRACTED_SQL%"
     set "TEMP_SQL_DIR=%TMPDIR%"
 )
-set "MYSQL_PWD="
 exit /b 0
 
 
