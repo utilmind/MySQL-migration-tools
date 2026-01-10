@@ -67,7 +67,8 @@ if exist "%LOCAL_INI%" (
     set "DEFAULTS_OPT=--defaults-extra-file=""%LOCAL_INI%"""
     set "USE_LOCAL_INI=1"
 )
-REM Only use MYSQL_PWD when pre-import is enabled (otherwise let mysql prompt once)
+REM Use MYSQL_PWD ONLY when pre-import is enabled.
+REM When pre-import is disabled, do NOT set MYSQL_PWD at all (and do NOT clear it to empty).
 if "%USE_LOCAL_INI%"=="0" (
     if "%USE_PREIMPORT%"=="1" (
         if "%DB_PASS%"=="" (
@@ -75,27 +76,28 @@ if "%USE_LOCAL_INI%"=="0" (
             set /p "DB_PASS=> "
         )
         set "MYSQL_PWD=%DB_PASS%"
-    ) else (
-        REM Pre-import disabled: do not set MYSQL_PWD (avoid warning); mysql will prompt once via -p
-        set "MYSQL_PWD="
     )
 )
 
-REM mysql client will use MYSQL_PWD (avoid interactive prompt twice)
-if "%USE_LOCAL_INI%"=="0" (
-    set "MYSQL_PWD=%DB_PASS%"
-)
 REM If ini is present, do NOT pass -u/-p on CLI, because command-line options override
 REM option-file values. Also avoid passing a bare "-p" (which would always trigger an interactive prompt).
 REM ============== END OPTIONAL LOCAL INI ==================
 
-REM Build auth options only when NOT using local ini.
-set "AUTH_OPTS="
+REM Build auth options
+set "AUTH_OPTS=-h%DB_HOST% -P%DB_PORT% -u ""%DB_USER%"""
+
+REM If local ini is used, do not pass user/host/port unless you want to override it.
+if "%USE_LOCAL_INI%"=="1" (
+    set "AUTH_OPTS="
+)
+
+REM Password strategy:
+REM - pre-import OFF: let mysql prompt once (-p)
+REM - pre-import ON : use MYSQL_PWD (no -p), so python+mysql don't ask twice
+set "PASS_OPT="
 if "%USE_LOCAL_INI%"=="0" (
-    set "AUTH_OPTS=-h%DB_HOST% -P%DB_PORT% -u ""%DB_USER%"""
     if "%USE_PREIMPORT%"=="0" (
-        REM Ask password interactively once (no MYSQL_PWD)
-        set "AUTH_OPTS=%AUTH_OPTS% -p"
+        set "PASS_OPT=-p"
     )
 )
 REM Use UTF-8 encoding for output, if needed
@@ -225,7 +227,7 @@ REM   --bvinary-mode    -> disable \0 interpretation and \r\n translation.
 REM   --force           -> continue import even if SQL errors occur. You can review all errors together in the log.
 REM   source file       -> read SQL commands from dump file
 REM   2> "%LOGFILE%"    -> send ONLY errors (stderr) to _errors-import.log
-%SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% %IMPORT_OPTS% --comments --binary-mode --force < "%IMPORT_SQL%" 2> "%LOGFILE%"
+%SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% %PASS_OPT% %IMPORT_OPTS% --comments --binary-mode --force < "%IMPORT_SQL%" 2> "%LOGFILE%"
 REM %SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% %IMPORT_OPTS% --verbose --comments --binary-mode --force -e "source %PREIMPORT_SQL%" 2> "%LOGFILE%"
 set "MYSQL_PWD="
 
