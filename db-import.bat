@@ -44,12 +44,15 @@ REM This can help when dumping tables with large rows / BLOBs over slow or flaky
 REM Example values: 1048576 (1 MiB), 4194304 (4 MiB)
 set "NET_BUFFER_LENGTH=4194304"
 
-REM set "SQLCLI=mariadb.exe"
-set "SQLCLI=mysql.exe"
+REM Enable/disable dump pre-processing before import (0 = off, 1 = on)
+set "USE_PREIMPORT=1"
 REM Replace 'python' to 'python3' or 'py', depending under which name the Python interpreter is registered in your system.
 set "PRE_PROCESSOR=python ./bash/pre-import.py"
 REM Collation map file. Pairs of legacy collations -> new collations.
 set "COLLATION_MAP=collation-map.json"
+
+REM set "SQLCLI=mariadb.exe"
+set "SQLCLI=mysql.exe"
 REM ============== END OF CONFIG ==================
 REM ================== OPTIONAL LOCAL INI ==================
 REM If a local ini file exists near this script, use it for connection options.
@@ -64,7 +67,14 @@ if exist "%LOCAL_INI%" (
     set "DEFAULTS_OPT=--defaults-extra-file=""%LOCAL_INI%"""
     set "USE_LOCAL_INI=1"
 )
-
+REM If no local ini and DB_PASS is empty, ask once and reuse via MYSQL_PWD
+if "%USE_LOCAL_INI%"=="0" (
+    if "%DB_PASS%"=="" (
+        set /p "DB_PASS=Enter password: "
+    )
+    REM mysql client will use MYSQL_PWD (avoid interactive prompt twice)
+    set "MYSQL_PWD=%DB_PASS%"
+)
 REM If ini is present, do NOT pass -u/-p on CLI, because command-line options override
 REM option-file values. Also avoid passing a bare "-p" (which would always trigger an interactive prompt).
 REM ============== END OPTIONAL LOCAL INI ==================
@@ -72,7 +82,7 @@ REM ============== END OPTIONAL LOCAL INI ==================
 REM Build auth options only when NOT using local ini.
 set "AUTH_OPTS="
 if "%USE_LOCAL_INI%"=="0" (
-    set "AUTH_OPTS=-h%DB_HOST% -P%DB_PORT% -u ""%DB_USER%"" -p%DB_PASS%"
+    set "AUTH_OPTS=-h%DB_HOST% -P%DB_PORT% -u ""%DB_USER%"""
 )
 REM Use UTF-8 encoding for output, if needed
 chcp 65001 >nul
@@ -175,17 +185,25 @@ if "%USE_LOCAL_INI%"=="1" (
     echo Importing "%WORK_SQL%" as '%DB_USER%'...
 )
 
-REM --- Preprocess dump (collation check + patch) BEFORE import ---
-set "DUMP_IN=%WORK_SQL%"
-REM Put patched dump into Windows TEMP and delete it after import
-set "PREIMPORT_SQL=%TEMP%\db-preimport-%RANDOM%%RANDOM%.sql"
+REM Decide which SQL file to import
+set "IMPORT_SQL=%WORK_SQL%"
+set "PREIMPORT_SQL="
 
-REM Option 1 (recommended): query collations directly from the target server
-set "MYSQL_LIST_COLLATIONS_CMD=%SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% -N"
-%PRE_PROCESSOR% --mysql-command "%MYSQL_LIST_COLLATIONS_CMD%" --map "%COLLATION_MAP%" "%DUMP_IN%" "%PREIMPORT_SQL%"
-if errorlevel 1 (
-    if exist "%PREIMPORT_SQL%" del "%PREIMPORT_SQL%" >nul 2>&1
-    exit /b 1
+if "%USE_PREIMPORT%"=="1" (
+    REM --- Preprocess dump (collation check + patch) BEFORE import ---
+    set "DUMP_IN=%WORK_SQL%"
+    set "PREIMPORT_SQL=%TEMP%\db-preimport-%RANDOM%%RANDOM%.sql"
+    set "MYSQL_LIST_COLLATIONS_CMD=%SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% -N"
+
+    %PRE_PROCESSOR% --mysql-command "%MYSQL_LIST_COLLATIONS_CMD%" --map "%COLLATION_MAP%" "%DUMP_IN%" "%PREIMPORT_SQL%"
+    if errorlevel 1 (
+        if exist "%PREIMPORT_SQL%" del "%PREIMPORT_SQL%" >nul 2>&1
+        exit /b 1
+    )
+
+    set "IMPORT_SQL=%PREIMPORT_SQL%"
+REM ) else (
+REM    echo [INFO] Pre-import step is disabled. Importing the original dump as-is.
 )
 
 REM Run MySQL client:
@@ -195,7 +213,7 @@ REM   --bvinary-mode    -> disable \0 interpretation and \r\n translation.
 REM   --force           -> continue import even if SQL errors occur. You can review all errors together in the log.
 REM   source file       -> read SQL commands from dump file
 REM   2> "%LOGFILE%"    -> send ONLY errors (stderr) to _errors-import.log
-%SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% %IMPORT_OPTS% --comments --binary-mode --force < "%PREIMPORT_SQL%" 2> "%LOGFILE%"
+%SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% %IMPORT_OPTS% --comments --binary-mode --force < "%IMPORT_SQL%" 2> "%LOGFILE%"
 REM %SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% %IMPORT_OPTS% --verbose --comments --binary-mode --force -e "source %PREIMPORT_SQL%" 2> "%LOGFILE%"
 
 REM Save MySQL process exit code (connection / fatal errors)

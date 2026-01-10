@@ -288,7 +288,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             "and there is no mapping for them (or the mapping value is empty).\n\n"
             f"Added {len(missing)} missing keys to the mapping file with empty values: {args.map_file}\n"
             f"{missing_list}\n\n"
-            "Please fill in the replacement collation names and rerun for auto-replacement.\n",
+            f"Please open '{args.map_file}' and fill in the replacement collation names. "
+            "Then rerun the import for auto-replacement of unsupported collations.\n",
             file=sys.stderr,
         )
         if args.show_summary:
