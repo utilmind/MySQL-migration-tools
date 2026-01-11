@@ -177,7 +177,7 @@ def load_target_collations_via_mysql(mysql_command: str) -> Set[str]:
     return out
 
 
-def scan_dump_for_collations(path: str, chunk_size: int = 1024 * 1024) -> Set[str]:
+def scan_dump_for_collations(path: str) -> Set[str]:
     """
     Scan a dump file and collect all referenced collations.
     Line-by-line scanning avoids false negatives caused by chunk boundary splits.
@@ -186,17 +186,17 @@ def scan_dump_for_collations(path: str, chunk_size: int = 1024 * 1024) -> Set[st
 
     with open(path, "r", encoding="utf-8", errors="replace", newline="") as f:
         for line in f:
-            # COLLATE xyz
-            for m in RE_COLLATE_CLAUSE.finditer(line):
+            # COLLATE=xxx
+            for m in RE_COLLATE_EQ.finditer(line):
                 found.add(m.group(1))
 
-            # DEFAULT COLLATE=xyz
-            for m in RE_DEFAULT_COLLATE.finditer(line):
+            # COLLATE xxx
+            for m in RE_COLLATE_WS.finditer(line):
                 found.add(m.group(1))
 
-            # SET collation_connection=xyz (and variants)
+            # SET collation_connection=xxx (and variants)
             for m in RE_SET_COLLATION_CONN.finditer(line):
-                found.add(m.group(1))
+                found.add(m.group("coll"))
 
     return found
 
