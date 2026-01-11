@@ -68,7 +68,7 @@ from typing import Dict, Set, Tuple, Optional, List
 RE_COLLATE_EQ = re.compile(r"(?i)\bCOLLATE\s*=\s*([0-9A-Za-z_]+)\b")
 RE_COLLATE_WS = re.compile(r"(?i)\bCOLLATE\s+([0-9A-Za-z_]+)\b")
 RE_SET_COLLATION_CONN = re.compile(
-    r"(?i)\bSET\s+(?:@@session\.)?collation_connection\s*=\s*'?(?P<coll>[0-9A-Za-z_]+)'?\s*;"
+    r"(?i)\bSET\s+(?:@@session\.)?collation_connection\s*=\s*'?(?P<coll>[0-9A-Za-z_]+)'?\s*(?:;|\s|$)"
 )
 
 
@@ -104,7 +104,8 @@ def canonical_charset_from_collation(coll: str) -> str:
 def load_mapping(path: str) -> "OrderedDict[str, str]":
     if not os.path.exists(path):
         return OrderedDict()
-    raw = open(path, "r", encoding="utf-8").read().strip()
+    with open(path, "r", encoding="utf-8") as f:
+        raw = f.read().strip()
     if not raw:
         return OrderedDict()
     data = json.loads(raw, object_pairs_hook=OrderedDict)
@@ -298,7 +299,7 @@ def apply_replacements_stream(
                 re.compile(
                     rf"(?i)(\bSET\s+(?:@@session\.)?collation_connection\s*=\s*'?)"
                     + re.escape(src)
-                    + r"(\b'?\s*;)"
+                    + r"('?\s*;)"
                 ),
                 r"\1" + dst + r"\2",
             )
