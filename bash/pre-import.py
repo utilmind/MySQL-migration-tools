@@ -299,7 +299,7 @@ def apply_replacements_stream(
                 re.compile(
                     rf"(?i)(\bSET\s+(?:@@session\.)?collation_connection\s*=\s*'?)"
                     + re.escape(src)
-                    + r"('?\s*;)"
+                    + r"('?\s*(?:;|\s|$))"
                 ),
                 r"\1" + dst + r"\2",
             )
