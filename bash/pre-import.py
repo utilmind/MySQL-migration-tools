@@ -66,6 +66,7 @@ RE_SET_COLLATION_CONN = re.compile(
     r"(?i)\bSET\s+(?:@@session\.)?collation_connection\s*=\s*'?(?P<coll>[0-9A-Za-z_]+)'?\s*;"
 )
 
+
 def collation_aliases(name: str) -> Set[str]:
     """
     MariaDB/MySQL often consider utf8 == utf8mb3 (alias).
@@ -79,6 +80,11 @@ def collation_aliases(name: str) -> Set[str]:
     return out
 
 
+def is_supported(collation: str, supported: Set[str]) -> bool:
+    """True if collation (or any of its aliases) is supported by the server."""
+    return any(a in supported for a in collation_aliases(collation))
+
+
 def canonical_charset_from_collation(coll: str) -> str:
     """
     Get charset-prefix from collation name until the first '_', then normalize:
@@ -88,6 +94,7 @@ def canonical_charset_from_collation(coll: str) -> str:
     if base == "utf8":
         return "utf8mb3"
     return base
+
 
 def load_mapping(path: str) -> "OrderedDict[str, str]":
     if not os.path.exists(path):
@@ -171,18 +178,26 @@ def load_target_collations_via_mysql(mysql_command: str) -> Set[str]:
 
 
 def scan_dump_for_collations(path: str, chunk_size: int = 1024 * 1024) -> Set[str]:
+    """
+    Scan a dump file and collect all referenced collations.
+    Line-by-line scanning avoids false negatives caused by chunk boundary splits.
+    """
     found: Set[str] = set()
+
     with open(path, "r", encoding="utf-8", errors="replace", newline="") as f:
-        while True:
-            chunk = f.read(chunk_size)
-            if not chunk:
-                break
-            for m in RE_COLLATE_EQ.finditer(chunk):
+        for line in f:
+            # COLLATE xyz
+            for m in RE_COLLATE_CLAUSE.finditer(line):
                 found.add(m.group(1))
-            for m in RE_COLLATE_WS.finditer(chunk):
+
+            # DEFAULT COLLATE=xyz
+            for m in RE_DEFAULT_COLLATE.finditer(line):
                 found.add(m.group(1))
-            for m in RE_SET_COLLATION_CONN.finditer(chunk):
-                found.add(m.group("coll"))
+
+            # SET collation_connection=xyz (and variants)
+            for m in RE_SET_COLLATION_CONN.finditer(line):
+                found.add(m.group(1))
+
     return found
 
 
@@ -253,11 +268,27 @@ def apply_replacements_stream(
     replacements: Dict[str, str],
     chunk_size: int = 1024 * 1024,
 ) -> None:
-    # Compile regex substitutions per collation
+    """
+    Apply replacements to a dump, streaming line-by-line to avoid chunk-boundary issues.
+    """
     subs: List[Tuple[re.Pattern, str]] = []
+
     for src, dst in replacements.items():
-        subs.append((re.compile(rf"(?i)(\bCOLLATE\s*=\s*){re.escape(src)}\b"), r"\1" + dst))
-        subs.append((re.compile(rf"(?i)(\bCOLLATE\s+){re.escape(src)}\b"), r"\1" + dst))
+        # COLLATE xyz
+        subs.append(
+            (
+                re.compile(rf"(?i)(\bCOLLATE\s+)" + re.escape(src) + r"(\b)"),
+                r"\1" + dst + r"\2",
+            )
+        )
+        # DEFAULT COLLATE=xyz
+        subs.append(
+            (
+                re.compile(rf"(?i)(\bCOLLATE\s*=\s*)" + re.escape(src) + r"(\b)"),
+                r"\1" + dst + r"\2",
+            )
+        )
+        # SET collation_connection=xyz
         subs.append(
             (
                 re.compile(
@@ -270,16 +301,15 @@ def apply_replacements_stream(
         )
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+
     with open(input_path, "r", encoding="utf-8", errors="replace", newline="") as fin, \
          open(output_path, "w", encoding="utf-8", errors="replace", newline="\n") as fout:
-        while True:
-            chunk = fin.read(chunk_size)
-            if not chunk:
-                break
-            new_chunk = chunk
+
+        for line in fin:
+            new_line = line
             for pat, repl in subs:
-                new_chunk = pat.sub(repl, new_chunk)
-            fout.write(new_chunk)
+                new_line = pat.sub(repl, new_line)
+            fout.write(new_line)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -334,7 +364,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     supported = supported_expanded
 
     referenced = scan_dump_for_collations(args.input)
-    unsupported = {c for c in referenced if c not in supported}
+    unsupported = {c for c in referenced if not is_supported(c, supported)}
 
     # Ensure every unsupported collation appears in mapping (even if empty)
     mapping_changed = False
