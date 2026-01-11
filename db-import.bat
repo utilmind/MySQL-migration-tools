@@ -45,6 +45,8 @@ REM Example values: 1048576 (1 MiB), 4194304 (4 MiB)
 set "NET_BUFFER_LENGTH=4194304"
 
 REM Enable/disable dump pre-processing before import (0 = off, 1 = on)
+REM AK 2026-01-10: this is EXPERIMENTAL feature! It supposed to fix collations not supported by target database.
+REM Please don't use it yet for real imports. It can actually break charsets instead of fixing.
 set "USE_PREIMPORT=0"
 REM Replace 'python' to 'python3' or 'py', depending under which name the Python interpreter is registered in your system.
 set "PRE_PROCESSOR=python ./bash/pre-import.py"
