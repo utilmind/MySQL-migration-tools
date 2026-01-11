@@ -42,6 +42,11 @@ USAGE (examples)
 
        python3 pre-import.py --target-collations target-collations.txt --map collation-map.json --dry-run --show-summary input.sql output.patched.sql
 
+Not for this script, but useful anyway
+
+    4) Print all collations supported by the TARGET server (one per line):
+
+       mysql -h127.0.0.1 -uroot -p<PASS> -N -e "SELECT CHARACTER_SET_NAME, COLLATION_NAME FROM information_schema.COLLATIONS"
 """
 
 from __future__ import annotations
