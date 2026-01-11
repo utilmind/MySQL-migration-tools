@@ -271,7 +271,6 @@ def apply_replacements_stream(
     input_path: str,
     output_path: str,
     replacements: Dict[str, str],
-    chunk_size: int = 1024 * 1024,
 ) -> None:
     """
     Apply replacements to a dump, streaming line-by-line to avoid chunk-boundary issues.
