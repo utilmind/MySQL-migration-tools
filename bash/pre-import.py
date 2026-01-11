@@ -29,18 +29,18 @@ Mapping format:
 
 USAGE (examples)
 
-1) Preprocess dump by querying the TARGET server for supported collations (recommended):
+    1) Preprocess dump by querying the TARGET server for supported collations (recommended):
 
-   python3 pre-import.py --mysql-command "mysql -h127.0.0.1 -uroot -pPASS -N" --map collation-map.json input.sql output.patched.sql
+       python3 pre-import.py --mysql-command "mysql -h127.0.0.1 -uroot -pPASS -N" --map collation-map.json input.sql output.patched.sql
 
-2) Preprocess dump using a pre-exported list of supported collations (no DB connection from Python):
+    2) Preprocess dump using a pre-exported list of supported collations (no DB connection from Python):
 
-   mysql -h127.0.0.1 -uroot -pPASS -N -e "SELECT COLLATION_NAME FROM information_schema.COLLATIONS" > target-collations.txt
-   python3 pre-import.py --target-collations target-collations.txt --map collation-map.json input.sql output.patched.sql
+       mysql -h127.0.0.1 -uroot -pPASS -N -e "SELECT COLLATION_NAME FROM information_schema.COLLATIONS" > target-collations.txt
+       python3 pre-import.py --target-collations target-collations.txt --map collation-map.json input.sql output.patched.sql
 
-3) Dry run (scan + update mapping file, do NOT write output file):
+    3) Dry run (scan + update mapping file, do NOT write output file):
 
-   python3 pre-import.py --target-collations target-collations.txt --map collation-map.json --dry-run --show-summary input.sql output.patched.sql
+       python3 pre-import.py --target-collations target-collations.txt --map collation-map.json --dry-run --show-summary input.sql output.patched.sql
 
 """
 
@@ -66,6 +66,28 @@ RE_SET_COLLATION_CONN = re.compile(
     r"(?i)\bSET\s+(?:@@session\.)?collation_connection\s*=\s*'?(?P<coll>[0-9A-Za-z_]+)'?\s*;"
 )
 
+def collation_aliases(name: str) -> Set[str]:
+    """
+    MariaDB/MySQL often consider utf8 == utf8mb3 (alias).
+    Return collation "synonyms" (including itself).
+    """
+    out = {name}
+    if name.startswith("utf8_"):
+        out.add("utf8mb3_" + name[len("utf8_"):])
+    elif name.startswith("utf8mb3_"):
+        out.add("utf8_" + name[len("utf8mb3_"):])
+    return out
+
+
+def canonical_charset_from_collation(coll: str) -> str:
+    """
+    Get charset-prefix from collation name until the first '_', then normalize:
+    utf8 -> utf8mb3 (because it' alias).
+    """
+    base = coll.split("_", 1)[0].lower()
+    if base == "utf8":
+        return "utf8mb3"
+    return base
 
 def load_mapping(path: str) -> "OrderedDict[str, str]":
     if not os.path.exists(path):
@@ -168,31 +190,59 @@ def build_replacements(
     referenced: Set[str],
     supported: Set[str],
     mapping: "OrderedDict[str, str]",
+    allow_charset_change: bool = False,
 ) -> Tuple[Dict[str, str], Set[str], Dict[str, str]]:
     """
     Returns:
       replacements: unsupported->mapped_to (only where mapped_to non-empty)
       missing: unsupported collations with no mapping or empty mapping
-      invalid_targets: mapping points to a collation not supported by target
+      invalid_targets: mapping points to a collation not supported by target OR violates charset safety
     """
     replacements: Dict[str, str] = {}
     missing: Set[str] = set()
     invalid_targets: Dict[str, str] = {}
 
+    def is_supported(coll: str) -> bool:
+        # supported already includes aliases, but keep this robust:
+        for alt in collation_aliases(coll):
+            if alt in supported:
+                return True
+        return False
+
+    def best_supported_name(coll: str) -> str:
+        # If exact exists, keep it; otherwise if an alias exists, use the one that exists.
+        if coll in supported:
+            return coll
+        for alt in collation_aliases(coll):
+            if alt in supported:
+                return alt
+        return coll  # fallback (will be reported invalid by caller)
+
     for c in sorted(referenced):
-        if c in supported:
+        if is_supported(c):
             continue
 
-        mapped = mapping.get(c, "").strip()
+        mapped_raw = mapping.get(c, "")
+        mapped = mapped_raw.strip()
         if not mapped:
             missing.add(c)
             continue
 
-        if mapped not in supported:
+        # Charset safety: do NOT allow mapping across different charset families by default.
+        src_cs = canonical_charset_from_collation(c)
+        dst_cs = canonical_charset_from_collation(mapped)
+        if (src_cs != dst_cs) and (not allow_charset_change):
+            invalid_targets[c] = (
+                f"{mapped} (blocked: charset change {src_cs} -> {dst_cs}; use --allow-charset-change to override)"
+            )
+            continue
+
+        # Validate mapped collation exists (or alias exists) on target
+        if not is_supported(mapped):
             invalid_targets[c] = mapped
             continue
 
-        replacements[c] = mapped
+        replacements[c] = best_supported_name(mapped)
 
     return replacements, missing, invalid_targets
 
@@ -234,15 +284,40 @@ def apply_replacements_stream(
 
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(description="Pre-process SQL dump: validate & replace unsupported collations.")
+
+    ap.add_argument("input",    help="Input dump (.sql)")
+    ap.add_argument("output",   help="Output dump (.sql) to be created")
+    ap.add_argument(
+        "--map",
+        dest="map_file",
+        default="collation-map.json",
+        help="Mapping JSON file."
+    )
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Scan + update mapping file, but do not write output dump."
+    )
+    ap.add_argument(
+        "--report",
+        help="Write a JSON report."
+    )
+    ap.add_argument(
+        "--show-summary",
+        action="store_true",
+        help="Print a summary."
+    )
+    ap.add_argument(
+        "--allow-charset-change",
+        action="store_true",
+        help="Allow mapping collations across different charsets (DANGEROUS; default: off).",
+    )
+
     src = ap.add_mutually_exclusive_group(required=True)
-    src.add_argument("--mysql-command", help="Shell command to run mysql client (reads SQL from stdin).")
+    src.add_argument("--mysql-command",     help="Shell command to run mysql client (reads SQL from stdin).")
     src.add_argument("--target-collations", help="File containing supported target collations.")
-    ap.add_argument("--map", dest="map_file", default="collation-map.json", help="Mapping JSON file.")
-    ap.add_argument("--dry-run", action="store_true", help="Scan + update mapping file, but do not write output dump.")
-    ap.add_argument("--report", help="Write a JSON report.")
-    ap.add_argument("--show-summary", action="store_true", help="Print a summary.")
-    ap.add_argument("input", help="Input dump (.sql)")
-    ap.add_argument("output", help="Output dump (.sql) to be created")
+
+
     args = ap.parse_args(argv)
 
     mapping = load_mapping(args.map_file)
@@ -251,6 +326,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         supported = load_target_collations_via_mysql(args.mysql_command)
     else:
         supported = load_target_collations_from_file(args.target_collations)
+
+    # Expand supported set with utf8 <-> utf8mb3 aliases
+    supported_expanded: Set[str] = set(supported)
+    for c in list(supported):
+        supported_expanded |= collation_aliases(c)
+    supported = supported_expanded
 
     referenced = scan_dump_for_collations(args.input)
     unsupported = {c for c in referenced if c not in supported}
@@ -262,7 +343,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             mapping[c] = ""
             mapping_changed = True
 
-    replacements, missing, invalid_targets = build_replacements(referenced, supported, mapping)
+    replacements, missing, invalid_targets = build_replacements(
+        referenced,
+        supported,
+        mapping,
+        allow_charset_change=args.allow_charset_change,
+    )
 
     # Save mapping if new keys were added
     if mapping_changed:
