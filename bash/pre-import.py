@@ -85,7 +85,7 @@ def collation_aliases(name: str) -> Set[str]:
     return out
 
 
-def is_supported(collation: str, supported: Set[str]) -> bool:
+def is_supported_coll(collation: str, supported: Set[str]) -> bool:
     """True if collation (or any of its aliases) is supported by the server."""
     return any(a in supported for a in collation_aliases(collation))
 
@@ -369,7 +369,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     supported = supported_expanded
 
     referenced = scan_dump_for_collations(args.input)
-    unsupported = {c for c in referenced if not is_supported(c, supported)}
+    unsupported = {c for c in referenced if not is_supported_coll(c, supported)}
 
     # Ensure every unsupported collation appears in mapping (even if empty)
     mapping_changed = False
