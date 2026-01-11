@@ -56,6 +56,11 @@ set "COLLATION_MAP=collation-map.json"
 REM set "SQLCLI=mariadb.exe"
 set "SQLCLI=mysql.exe"
 REM ============== END OF CONFIG ==================
+
+REM Use UTF-8 encoding for output, if needed
+chcp 65001 >nul
+setlocal EnableExtensions EnableDelayedExpansion
+
 REM ================== OPTIONAL LOCAL INI ==================
 REM If a local ini file exists near this script, use it for connection options.
 REM This keeps passwords out of the .bat and allows per-repo local settings.
@@ -102,8 +107,6 @@ if "%USE_LOCAL_INI%"=="0" (
         set "PASS_OPT=-p"
     )
 )
-REM Use UTF-8 encoding for output, if needed
-chcp 65001 >nul
 
 REM Make sure that mysql exists in PATH
 %SQLCLI% --version >nul 2>&1
@@ -211,9 +214,10 @@ if "%USE_PREIMPORT%"=="1" (
     REM --- Preprocess dump (collation check + patch) BEFORE import ---
     set "DUMP_IN=%WORK_SQL%"
     set "PREIMPORT_SQL=%TEMP%\db-preimport-%RANDOM%%RANDOM%.sql"
+
     set "MYSQL_LIST_COLLATIONS_CMD=%SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% -N"
 
-    %PRE_PROCESSOR% --mysql-command "%MYSQL_LIST_COLLATIONS_CMD%" --map "%COLLATION_MAP%" "%DUMP_IN%" "%PREIMPORT_SQL%"
+    %PRE_PROCESSOR% --mysql-command "!MYSQL_LIST_COLLATIONS_CMD!" --map "%COLLATION_MAP%" "%DUMP_IN%" "%PREIMPORT_SQL%"
     if errorlevel 1 (
         if exist "%PREIMPORT_SQL%" del "%PREIMPORT_SQL%" >nul 2>&1
         exit /b 1
