@@ -223,12 +223,7 @@ def build_replacements(
     missing: Set[str] = set()
     invalid_targets: Dict[str, str] = {}
 
-    def is_supported(coll: str) -> bool:
-        # supported already includes aliases, but keep this robust:
-        for alt in collation_aliases(coll):
-            if alt in supported:
-                return True
-        return False
+    is_supported = lambda c: is_supported_coll(c, supported)
 
     def best_supported_name(coll: str) -> str:
         # If exact exists, keep it; otherwise if an alias exists, use the one that exists.
@@ -278,19 +273,20 @@ def apply_replacements_stream(
     """
     subs: List[Tuple[re.Pattern, str]] = []
 
-    for src, dst in replacements.items():
+    for src in sorted(replacements):
+        dst = replacements[src]
         # COLLATE xyz
         subs.append(
             (
-                re.compile(rf"(?i)(\bCOLLATE\s+)" + re.escape(src) + r"(\b)"),
-                r"\1" + dst + r"\2",
+                re.compile(rf"(?i)(\bCOLLATE\s+)" + re.escape(src) + r"(?=($|[\s,;\)\]]))"),
+                r"\1" + dst
             )
         )
         # DEFAULT COLLATE=xyz
         subs.append(
             (
-                re.compile(rf"(?i)(\bCOLLATE\s*=\s*)" + re.escape(src) + r"(\b)"),
-                r"\1" + dst + r"\2",
+                re.compile(rf"(?i)(\bCOLLATE\s*=\s*)" + re.escape(src) + r"(?=($|[\s,;\)\]]))"),
+                r"\1" + dst
             )
         )
         # SET collation_connection=xyz
@@ -357,10 +353,17 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     mapping = load_mapping(args.map_file)
 
-    if args.mysql_command:
+    if args.mysql_command is not None:
+        if not args.mysql_command.strip():
+            raise SystemExit("ERROR: --mysql-command was provided but is empty.")
         supported = load_target_collations_via_mysql(args.mysql_command)
-    else:
+
+    elif args.target_collations is not None:
         supported = load_target_collations_from_file(args.target_collations)
+
+    else:
+        # Just in case (although mutually exclusive group required=True should not allow this)
+        raise SystemExit("ERROR: Either --mysql-command or --target-collations must be provided.")
 
     # Expand supported set with utf8 <-> utf8mb3 aliases
     supported_expanded: Set[str] = set(supported)
