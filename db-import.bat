@@ -2,7 +2,7 @@
 REM ======================================================================
 REM  db-import.bat
 REM
-REM  Copyright (c) 2025 utilmind
+REM  Copyright (c) 2026 utilmind
 REM  All rights reserved.
 REM  https://github.com/utilmind/MySQL-migration-tools
 REM
@@ -16,7 +16,7 @@ REM      db-import.bat source-dump.sql[.gz]|source-dump.zip|source-dump.rar
 REM
 REM ======================================================================
 
-
+set "SCRIPT_DIR=%~dp0"
 REM ================== CONFIG ==================
 REM Log file name
 set "LOGFILE=_errors-import.log"
@@ -47,11 +47,11 @@ set "NET_BUFFER_LENGTH=4194304"
 REM Enable/disable dump pre-processing before import (0 = off, 1 = on)
 REM AK 2026-01-10: this is EXPERIMENTAL feature! It supposed to fix collations not supported by target database.
 REM Please don't use it yet for real imports. It can actually break charsets instead of fixing.
-set "USE_PREIMPORT=0"
+set "USE_PREIMPORT=1"
 REM Replace 'python' to 'python3' or 'py', depending under which name the Python interpreter is registered in your system.
-set "PRE_PROCESSOR=python ./bash/pre-import.py"
+set "PRE_PROCESSOR=python %SCRIPT_DIR%/bash/pre-import.py"
 REM Collation map file. Pairs of legacy collations -> new collations.
-set "COLLATION_MAP=collation-map.json"
+set "COLLATION_MAP=%SCRIPT_DIR%collation-map.json"
 
 REM set "SQLCLI=mariadb.exe"
 set "SQLCLI=mysql.exe"
@@ -66,7 +66,6 @@ REM If a local ini file exists near this script, use it for connection options.
 REM This keeps passwords out of the .bat and allows per-repo local settings.
 REM
 REM File name (relative to script directory): .mysql-client.ini
-set "SCRIPT_DIR=%~dp0"
 set "LOCAL_INI=%SCRIPT_DIR%.mysql-client.ini"
 set "DEFAULTS_OPT="
 set "USE_LOCAL_INI=0"
@@ -74,18 +73,6 @@ if exist "%LOCAL_INI%" (
     set "DEFAULTS_OPT=--defaults-extra-file=""%LOCAL_INI%"""
     set "USE_LOCAL_INI=1"
 )
-REM Use MYSQL_PWD ONLY when pre-import is enabled.
-REM When pre-import is disabled, do NOT set MYSQL_PWD at all (and do NOT clear it to empty).
-if "%USE_LOCAL_INI%"=="0" (
-    if "%USE_PREIMPORT%"=="1" (
-        if "%DB_PASS%"=="" (
-            echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^) or press Ctrl+C to terminate.
-            set /p "DB_PASS=> "
-        )
-        set "MYSQL_PWD=%DB_PASS%"
-    )
-)
-
 REM If ini is present, do NOT pass -u/-p on CLI, because command-line options override
 REM option-file values. Also avoid passing a bare "-p" (which would always trigger an interactive prompt).
 REM ============== END OPTIONAL LOCAL INI ==================
@@ -167,7 +154,6 @@ if defined MYSQL_HELP_FILE (
     set "MYSQL_HELP_FILE="
 )
 
-
 REM Check if first argument is provided
 if "%~1"=="" (
     echo Error: no path to the MySQL dump provided.
@@ -204,6 +190,16 @@ if "%USE_LOCAL_INI%"=="1" (
     echo Importing "%WORK_SQL%" using local ini credentials...
 ) else (
     echo Importing "%WORK_SQL%" as '%DB_USER%'...
+
+    REM Use MYSQL_PWD ONLY when pre-import is enabled.
+    REM When pre-import is disabled, do NOT set MYSQL_PWD at all (and do NOT clear it to empty).
+    if "%USE_PREIMPORT%"=="1" (
+        if "%DB_PASS%"=="" (
+            echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^) or press Ctrl+C to terminate.
+            set /p "DB_PASS=> "
+        )
+        set "MYSQL_PWD=!DB_PASS!"
+    )
 )
 
 REM Decide which SQL file to import
@@ -217,19 +213,26 @@ if "%USE_PREIMPORT%"=="1" (
 
     set "MYSQL_LIST_COLLATIONS_CMD=%SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% -N"
 
-    %PRE_PROCESSOR% --mysql-command "!MYSQL_LIST_COLLATIONS_CMD!" --map "%COLLATION_MAP%" "%DUMP_IN%" "%PREIMPORT_SQL%"
+    echo Pre-processing "!DUMP_IN!"... (Output to "!PREIMPORT_SQL!")
+    %PRE_PROCESSOR% --mysql-command "!MYSQL_LIST_COLLATIONS_CMD!" --map "%COLLATION_MAP%" "!DUMP_IN!" "!PREIMPORT_SQL!"
     if errorlevel 1 (
         if exist "%PREIMPORT_SQL%" del "%PREIMPORT_SQL%" >nul 2>&1
         exit /b 1
     )
+    echo Pre-processing completed.
 
-    set "IMPORT_SQL=%PREIMPORT_SQL%"
+    set "IMPORT_SQL=!PREIMPORT_SQL!"
 )
 
+if "%USE_LOCAL_INI%"=="1" (
+  echo Importing "%IMPORT_SQL%" using local ini credentials...
+) else (
+  echo Importing "%IMPORT_SQL%" into %DB_HOST%:%DB_PORT%
+)
 REM Run MySQL client:
 REM   --verbose         -> show what is being executed (sometimes noisy, commented out below)
 REM   --comments        -> don't strip comments
-REM   --bvinary-mode    -> disable \0 interpretation and \r\n translation.
+REM   --binary-mode     -> disable \0 interpretation and \r\n translation.
 REM   --force           -> continue import even if SQL errors occur. You can review all errors together in the log.
 REM   source file       -> read SQL commands from dump file
 REM   2> "%LOGFILE%"    -> send ONLY errors (stderr) to _errors-import.log
