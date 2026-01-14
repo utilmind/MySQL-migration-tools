@@ -281,15 +281,15 @@ REM No log errors and MySQL exited normally
 echo Import completed successfully. No errors detected.
 exit /b 0
 
-
-REM ======================================================================
+REM ==========================================================================
 REM  ExtractFromRar
 REM  Uses rar.exe or unrar.exe from PATH to extract %SRC_FILE%
 REM  into a temporary directory. Picks first *.sql file as WORK_SQL.
 REM  On success:  WORK_SQL and TEMP_SQL_DIR are set, exit /b 0
 REM  On failure:  message printed, exit /b 1
-REM ======================================================================
+REM ==========================================================================
 :ExtractFromRar
+
 setlocal
 set "RAR_SRC=%SRC_FILE%"
 
@@ -342,14 +342,14 @@ endlocal & (
 exit /b 0
 
 
-REM ======================================================================
+REM ==========================================================================
 REM  ExtractWith7z
 REM  Uses 7z.exe or 7za.exe from PATH to extract %SRC_FILE%
 REM  into a temporary directory. Handles .zip and .gz archives.
 REM  Picks first *.sql file as WORK_SQL.
 REM  On success:  WORK_SQL and TEMP_SQL_DIR are set, exit /b 0
 REM  On failure:  message printed, exit /b 1
-REM ======================================================================
+REM ==========================================================================
 :ExtractWith7z
 setlocal
 set "ARCH_SRC=%SRC_FILE%"
