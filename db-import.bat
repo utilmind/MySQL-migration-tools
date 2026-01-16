@@ -213,7 +213,7 @@ if "%USE_PREIMPORT%"=="1" (
 
     set "MYSQL_LIST_COLLATIONS_CMD=%SQLCLI% %DEFAULTS_OPT% %AUTH_OPTS% -N"
 
-    echo Pre-processing "!DUMP_IN!"... (Output to "!PREIMPORT_SQL!")
+    echo Pre-processing "!DUMP_IN!"... ^(Output to "!PREIMPORT_SQL!"^)
     %PRE_PROCESSOR% --mysql-command "!MYSQL_LIST_COLLATIONS_CMD!" --map "%COLLATION_MAP%" "!DUMP_IN!" "!PREIMPORT_SQL!"
     if errorlevel 1 (
         if exist "%PREIMPORT_SQL%" del "%PREIMPORT_SQL%" >nul 2>&1
