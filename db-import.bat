@@ -189,7 +189,7 @@ if exist "%LOGFILE%" del "%LOGFILE%"
 if "%USE_LOCAL_INI%"=="1" (
     echo Importing "%WORK_SQL%" using local ini credentials...
 ) else (
-    echo Importing "%WORK_SQL%" as '%DB_USER%'...
+    echo Importing "%WORK_SQL%" as '%DB_USER%' into %DB_HOST%:%DB_PORT%...
 
     REM Use MYSQL_PWD ONLY when pre-import is enabled.
     REM When pre-import is disabled, do NOT set MYSQL_PWD at all (and do NOT clear it to empty).
@@ -219,16 +219,11 @@ if "%USE_PREIMPORT%"=="1" (
         if exist "%PREIMPORT_SQL%" del "%PREIMPORT_SQL%" >nul 2>&1
         exit /b 1
     )
-    echo Pre-processing completed.
+    echo Pre-processing completed. Now really importing '!PREIMPORT_SQL!'...
 
     set "IMPORT_SQL=!PREIMPORT_SQL!"
 )
 
-if "%USE_LOCAL_INI%"=="1" (
-  echo Importing "%IMPORT_SQL%" using local ini credentials...
-) else (
-  echo Importing "%IMPORT_SQL%" into %DB_HOST%:%DB_PORT%
-)
 REM Run MySQL client:
 REM   --verbose         -> show what is being executed (sometimes noisy, commented out below)
 REM   --comments        -> don't strip comments
