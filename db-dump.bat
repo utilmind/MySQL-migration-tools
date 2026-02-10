@@ -35,6 +35,7 @@ REM        - Dump only selected databases. Other behavior depends on internal fl
 REM             Valid options:
 REM                 --one[=dump-name.sql] - dumps all into single file. Filename can be specified.
 REM                 --no-users - doesn't export user grants and privileges.
+REM                 --no-data  - dump only schema (DDL) without data (output extension becomes .ddl.sql).
 REM
 REM =================================================================================================
 
@@ -302,6 +303,15 @@ if not errorlevel 1 (
     set "COMMON_OPTS=%COMMON_OPTS% --column-statistics=0"
 )
 
+
+REM Detect availability of schema-only options (mysqldump feature flags).
+set "HAS_OPT_NO_DATA=0"
+set "HAS_OPT_SKIP_ADD_DROP_TABLE=0"
+findstr /C:"--no-data" "%MYSQLDUMP_HELP_FILE%" >nul 2>&1
+if not errorlevel 1 set "HAS_OPT_NO_DATA=1"
+findstr /C:"--skip-add-drop-table" "%MYSQLDUMP_HELP_FILE%" >nul 2>&1
+if not errorlevel 1 set "HAS_OPT_SKIP_ADD_DROP_TABLE=1"
+
 REM ===== Optional, uncomment as needed =====
 
 REM Preserve server local time zone behavior (usually NOT recommended). By default, mysqldump sets UTC.
@@ -347,6 +357,8 @@ set "DBNAMES_IN="
 
 REM Flag: script was started without any CLI arguments
 set "NO_ARGS=0"
+REM Flag: dump only structure (no data rows)
+set "STRUCTURE_ONLY=0"
 REM Flag: password was requested interactively from user
 set "PASS_WAS_PROMPTED=0"
 if "%~1"=="" set "NO_ARGS=1"
@@ -412,6 +424,13 @@ if "%~1"=="" goto :after_args
         goto :parse_args
     )
 
+    REM Dump only schema (no data rows)
+    if /I "%ARG%"=="--NO-DATA" (
+        set "STRUCTURE_ONLY=1"
+        shift
+        goto :parse_args
+    )
+
     if /I "%ARG%"=="--NO-USER" (
         set "EXPORT_USERS_AND_GRANTS=0"
         shift
@@ -430,6 +449,31 @@ if "%~1"=="" goto :after_args
 
 :after_args
 
+
+
+REM === APPLY --no-data (schema-only) SETTINGS ===
+if "%STRUCTURE_ONLY%"=="1" (
+  REM Ensure mysqldump supports --no-data
+  if not "%HAS_OPT_NO_DATA%"=="1" (
+    echo [ERROR] Your "%SQLDUMP_EXE%" does not support --no-data. Cannot produce schema-only dump.
+    goto :end
+  )
+
+  REM Add schema-only options to mysqldump
+  set "COMMON_OPTS=%COMMON_OPTS% --no-data"
+  if "%HAS_OPT_SKIP_ADD_DROP_TABLE%"=="1" (
+    set "COMMON_OPTS=%COMMON_OPTS% --skip-add-drop-table"
+  )
+
+  REM When schema-only is requested, post-processor should also strip remaining DROP* statements
+  set "POSTPROC_NODROP=--no-drop"
+
+  REM Change output filenames extension to .ddl.sql (DDL-only dump)
+  call :ensure_ddl_extension OUTFILE
+
+) else (
+  set "POSTPROC_NODROP="
+)
 
 REM === SHOW PLANNED ACTION BEFORE ASKING FOR PASSWORD ===
 for %%I in ("%OUTFILE%") do set "OUTFILE_FULL_PATH=%%~fI"
@@ -458,17 +502,17 @@ if "%DBNAMES%"=="" (
   if "%ONE_MODE%"=="1" (
     echo Planned action:
     if defined DEFAULTS_OPT (
-      echo   Dump databases %DBNAMES% ^(connection: from ini file^) into ONE file:
+      echo   Dump database^(s^) `%DBNAMES%` ^(connection: from ini file^) into ONE file:
     ) else (
-      echo   Dump databases %DBNAMES% from %DB_HOST%:%DB_PORT% into ONE file:
+      echo   Dump database^(s^) `%DBNAMES%` from %DB_HOST%:%DB_PORT% into ONE file:
     )
     echo     "%OUTFILE_FULL_PATH%"
   ) else (
     echo Planned action:
     if defined DEFAULTS_OPT (
-      echo   Dump databases %DBNAMES% ^(connection: from ini file^) into separate file^(s^) to the following directory:
+      echo   Dump database^(s^) `%DBNAMES%` ^(connection: from ini file^) into separate file^(s^) to the following directory:
     ) else (
-      echo   Dump databases %DBNAMES% from %DB_HOST%:%DB_PORT% into separate file^(s^) to the following directory:
+      echo   Dump database^(s^) `%DBNAMES%` from %DB_HOST%:%DB_PORT% into separate file^(s^) to the following directory:
     )
     echo     "%OUTDIR_FULL_PATH%"
   )
@@ -714,7 +758,7 @@ if "%POST_PROCESS_DUMP%"=="1" (
 
   echo Post-processing combined dump...
   REM IMPORTANT: here we do NOT pass --db-name, because this is a multi-database dump
-  %POST_PROCESSOR%!PREPEND_DUMP! "%ALLDATA%" "%ALLDATA_CLEAN%" "%TABLE_SCHEMAS%"
+  %POST_PROCESSOR% %POSTPROC_NODROP%!PREPEND_DUMP! "%ALLDATA%" "%ALLDATA_CLEAN%" "%TABLE_SCHEMAS%"
 
   if errorlevel 1 (
     echo [WARN] Post-processing failed for "%ALLDATA%". Keeping raw dump.
@@ -738,6 +782,23 @@ echo.
 goto :after_dumps
 
 
+REM ================== FUNCTION: ENSURE .ddl.sql EXTENSION ==================
+REM Usage: call :ensure_ddl_extension VAR_NAME
+REM Modifies variable in-place: replaces trailing ".sql" with ".ddl.sql",
+REM or appends ".ddl.sql" if there is no ".sql" extension.
+:ensure_ddl_extension
+setlocal EnableDelayedExpansion
+set "VARNAME=%~1"
+for %%A in ("!%VARNAME%!") do set "VAL=%%~A"
+REM Normalize: if ends with .sql -> replace; else append .ddl.sql
+if /I "!VAL:~-4!"==".sql" (
+  set "VAL=!VAL:~0,-4!.ddl.sql"
+) else (
+  set "VAL=!VAL!.ddl.sql"
+)
+endlocal & set "%~1=%VAL%"
+goto :EOF
+
 REM ================== FUNCTION/SUB-ROUTINE: DUMP SINGLE DATABASE ==================
 REM This function used only ONCE (where we dump databases into separate files),
 REM but it's nice and clean. So let's keep it separately, not embed anywhere.
@@ -750,6 +811,10 @@ set "TARGET=%~2"
 if "%TARGET%"=="" (
   set "TARGET=%OUTDIR%\%DBNAME%.sql"
 )
+if "%STRUCTURE_ONLY%"=="1" (
+  call :ensure_ddl_extension TARGET
+)
+
 
 echo --- Dumping database '%DBNAME%' to '%TARGET%'...
 REM Alternatively we could specify --result-file="%TARGET%", but we want error log anyway.
@@ -768,7 +833,7 @@ if "%POST_PROCESS_DUMP%"=="1" (
   for %%I in ("%TARGET%") do set "CLEAN_TARGET=%%~dpnI%POST_PROCESS_APPENDIX%%%~xI"
 
   echo Post-processing dump '%TARGET%' into '!CLEAN_TARGET!'...
-  %POST_PROCESSOR% --db-name "%DBNAME%" "%TARGET%" "!CLEAN_TARGET!" "%TABLE_SCHEMAS%"
+  %POST_PROCESSOR% %POSTPROC_NODROP% --db-name "%DBNAME%" "%TARGET%" "!CLEAN_TARGET!" "%TABLE_SCHEMAS%"
   if errorlevel 1 (
     echo [WARN] Post-processing failed for '%TARGET%'. Keeping original dump.
     if defined CLEAN_TARGET del "!CLEAN_TARGET!" 2>nul
