@@ -116,6 +116,7 @@ db-dump.bat --one=my-dump.sql    → all DBs into a single file with custom name
 db-dump.bat db1 db2 db3          → dump only selected databases (in separate dumps, since option --one not used)
 db-dump.bat --one db1 db2 db3    → one combined SQL for selected DBs
 db-dump.bat --one --no-users db1 db2 db3  → one combined SQL w/o information about users and grants, only specified databases.
+db-dump.bat db_name --no-users --no-data  → dump spsecified database, DDL only (database structure only, no data).
 ```
 
 #### 💡 Notes
