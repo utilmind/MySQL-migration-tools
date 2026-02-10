@@ -3,7 +3,7 @@
 #  dump-users-and-grants.sh - Export MySQL / MariaDB users and grants
 #
 #  Part of: MySQL Migration Tools
-#  Copyright (c) 2025 utilmind
+#  Copyright (c) 2025-2026 utilmind
 #  https://github.com/utilmind/MySQL-migration-tools
 #
 #  Description:

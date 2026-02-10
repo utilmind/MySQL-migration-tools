@@ -22,7 +22,7 @@
 #        disabled with --skip-optimize).
 #
 #  Usage:
-#      ./db-dump.sh [no-data] [--skip-optimize] dump-name.sql [configuration-name] ["table1 table2 ..."]
+#      ./db-dump.sh [--no-data or --ddl] [--skip-optimize] dump-name.sql [configuration-name] ["table1 table2 ..."]
 #
 #  License: MIT
 #  (c) utilmind, 2012-2025
@@ -178,14 +178,15 @@ print_help() {
   scriptName=$(basename "$0")
   cat << EOF
 Usage:
-    $scriptName [--skip-optimize] dump-name.sql [configuration-name] ["table1 table2 ..."]
+    $scriptName [--options] dump-name.sql [configuration-name] ["table1 table2 ..."]
 
 Options:
-    --no-data
+    --no-data OR --ddl (if you prefer .ddl.sql extensions)
         Dump only database structure (no table rows). Additionally, all DROP*
         statements (DROP TABLE / DROP VIEW / DROP TRIGGER / etc.) will be
         removed from the final SQL file to make the schema safer for analysis
         tools and AI without exposing real data.
+        --ddl it is a synonym for --no-data. If --ddl is used, it produce files with .ddl.sql extension.
 
     --skip-optimize
         Do not run optimize-tables.sh before dumping (skip MyISAM OPTIMIZE / InnoDB ANALYZE).
@@ -229,7 +230,7 @@ Behavior:
         # Optional: you can override default table prefixes for this DB:
         # dbTablePrefix=('table_prefix1_' 'table_prefix2_' 'bot_' 'email_' 'user_')
 
-(c) utilmind, 2012-2025
+(c) utilmind, 2012-2026
 
 EOF
 }
@@ -244,6 +245,7 @@ fi
 
 run_optimize=1
 structure_only=0   # when 1, dump only schema (no table rows, no DROP statements)
+ddl_mode=0         # when 1, the user explicitly requested --ddl (pretty extension .ddl.sql)
 
 positional=()  # used to collect positional options (w/o --)
 
@@ -259,6 +261,11 @@ while [ $# -gt 0 ]; do
             ;;
         --no-data)
             structure_only=1
+            shift
+            ;;
+        --ddl)
+            structure_only=1
+            ddl_mode=1
             shift
             ;;
         --)
@@ -294,7 +301,7 @@ fi
 dumpTemplate="${positional[0]}"
 dbConfigName="${positional[1]:-}"   # may be empty
 
-# Собираем все оставшиеся позиционные аргументы в одну строку таблиц
+# Collect all the remaining positional arguments into one row of tables
 tablesListRaw=""
 if [ ${#positional[@]} -gt 2 ]; then
     for ((i = 2; i < ${#positional[@]}; i++)); do
@@ -323,6 +330,15 @@ tablesMetaFilename="$tempDir/_${dbConfigName}-tables_meta.tsv"
 
 current_date=$(date +"%Y%m%d")
 targetFilename=$(echo "$dumpTemplate" | sed "s/@/${current_date}/g")
+
+# If user used --ddl (not just --no-data), prefer *.ddl.sql extension for clarity.
+if [ "$ddl_mode" -eq 1 ]; then
+    case "$targetFilename" in
+        *.ddl.sql) : ;;                 # already good
+        *.sql) targetFilename="${targetFilename%.sql}.ddl.sql" ;;
+        *) : ;;                         # user provided a non-.sql name; keep as-is
+    esac
+fi
 
 
 # ---------------- LOAD CREDENTIALS ----------------

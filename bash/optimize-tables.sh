@@ -3,7 +3,7 @@
 #  Table Optimization Utility (optimize-tables.sh)
 #
 #  Part of: MySQL Migration Tools
-#  Copyright (c) 2012-2025 utilmind
+#  Copyright (c) 2012-2026 utilmind
 #  https://github.com/utilmind/MySQL-migration-tools
 #
 #  Description:
