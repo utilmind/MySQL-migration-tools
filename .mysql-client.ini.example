@@ -40,6 +40,9 @@ default-character-set=utf8mb4
 
 ; Optional SSL settings.
 ssl-ca=C:/Users/USERNAME/.ssh/rds-global-bundle.pem
+; Uncomment if you would like to disable SSL (not recommended)
+# ssl=0
+# skip-ssl
 ; The following one is for MySQL only, not available in MariaDB.
 # ssl-mode=REQUIRED
 

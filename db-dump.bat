@@ -187,7 +187,7 @@ REM Connection-related options reused across mysql and mysqldump.
 REM SSL_CA has priority over SKIP_SSL (they are mutually exclusive).
 set "CONN_SSL_OPTS="
 if not "%SSL_CA%"=="" (
-  set "CONN_SSL_OPTS=--ssl --ssl-ca=""%SSL_CA%"""
+  set "CONN_SSL_OPTS=--ssl --ssl-ca="%SSL_CA%""
 ) else (
   if "%SKIP_SSL%"=="1" (
     set "CONN_SSL_OPTS=--skip-ssl"
@@ -351,7 +351,7 @@ if "%~1"=="" set "NO_ARGS=1"
 set "DEFAULTS_OPT="
 if "%USE_DEFAULTS_FILE%"=="1" (
   REM IMPORTANT: Do NOT embed extra quotes into the option value.
-  REM We keep the raw path in the option and quote the whole argument at call site. So, no ""%LOCAL_DEFAULTS_FILE%"" here.
+  REM We keep the raw path in the option and quote the whole argument at call site. So, no "%LOCAL_DEFAULTS_FILE%" here.
   set "DEFAULTS_OPT=%LOCAL_DEFAULTS_FILE%"
 )
 
@@ -500,14 +500,14 @@ set "DUMP_AUTH_OPTS="
 if defined DEFAULTS_OPT (
   REM When using option file, do not pass hardcoded connection/SSL params on CLI (so ini can override).
   REM Quote the whole argument so paths with spaces work (e.g. C:\Program Files\...).
-  set "MYSQL_AUTH_OPTS=--defaults-extra-file=""%DEFAULTS_OPT%"""
-  set "DUMP_AUTH_OPTS=--defaults-extra-file=""%DEFAULTS_OPT%"""
+  set "MYSQL_AUTH_OPTS=--defaults-extra-file="%DEFAULTS_OPT%""
+  set "DUMP_AUTH_OPTS=--defaults-extra-file="%DEFAULTS_OPT%""
   REM Also disable script-side SSL CLI options (they would override ini).
   set "MYSQL_CONN_OPTS="
   set "DUMP_CONN_OPTS="
 ) else (
-  set "MYSQL_AUTH_OPTS=-h ""%DB_HOST%"" -P %DB_PORT% -u ""%DB_USER%"" -p%DB_PASS% %MYSQL_CONN_OPTS%"
-  set "DUMP_AUTH_OPTS=-h ""%DB_HOST%"" -P %DB_PORT% -u ""%DB_USER%"" -p%DB_PASS% %DUMP_CONN_OPTS%"
+  set "MYSQL_AUTH_OPTS=-h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %MYSQL_CONN_OPTS%"
+  set "DUMP_AUTH_OPTS=-h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %DUMP_CONN_OPTS%"
 )
 if not exist "%OUTDIR%" mkdir "%OUTDIR%"
 
@@ -701,7 +701,7 @@ if "%POST_PROCESS_DUMP%"=="1" (
   if "%EXPORT_USERS_AND_GRANTS%"=="1" (
     if exist "%USERDUMP%" (
       echo Post-processing and prepending users dump ^(_users_and_grants.sql^)...
-      set "PREPEND_DUMP= --prepend-file ""%USERDUMP%"""
+      set "PREPEND_DUMP= --prepend-file "%USERDUMP%""
     )
   )
 

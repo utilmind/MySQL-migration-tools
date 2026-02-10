@@ -142,14 +142,14 @@ if defined DEFAULTS_OPT (
   REM Prefer the canonical form without wrapping the whole option token in quotes.
   REM (This keeps cmd.exe parsing predictable and still supports spaces in the ini path.)
   REM Quote only the value part, not the whole token.
-  set "MYSQL_AUTH_OPTS=--defaults-extra-file=""%DEFAULTS_OPT%"""
+  set "MYSQL_AUTH_OPTS=--defaults-extra-file="%DEFAULTS_OPT%""
 ) else (
   REM Build SSL-related options. SSL_CA has priority over SKIP_SSL (mutually exclusive).
   REM Note: --ssl-verify-server-cert is not supported by every client build, so we enable it only if available.
   set "CONN_SSL_OPTS="
   set "CONN_VERIFY_CERT_OPTS="
   if not "%SSL_CA%"=="" (
-    set "CONN_SSL_OPTS=--ssl --ssl-ca=""%SSL_CA%"""
+    set "CONN_SSL_OPTS=--ssl --ssl-ca="%SSL_CA%""
     set "MYSQL_HELP_FILE=%TEMP%\mysql_help_%RANDOM%.tmp"
     "%SQLBIN%%SQLCLI%" --help >"%MYSQL_HELP_FILE%" 2>&1
     findstr /C:"--ssl-verify-server-cert" "%MYSQL_HELP_FILE%" >nul 2>&1
@@ -162,7 +162,7 @@ if defined DEFAULTS_OPT (
       set "CONN_SSL_OPTS=--skip-ssl"
     )
   )
-  set "MYSQL_AUTH_OPTS=-h ""%DB_HOST%"" -P %DB_PORT% -u ""%DB_USER%"" -p%DB_PASS% %CONN_SSL_OPTS% %CONN_VERIFY_CERT_OPTS%"
+  set "MYSQL_AUTH_OPTS=-h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %CONN_SSL_OPTS% %CONN_VERIFY_CERT_OPTS%"
 )
 
 
