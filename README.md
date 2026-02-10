@@ -117,7 +117,7 @@ db-dump.bat db1 db2 db3          → dump only selected databases (in separate d
 db-dump.bat --one db1 db2 db3    → one combined SQL for selected DBs
 db-dump.bat --one --no-users db1 db2 db3  → one combined SQL w/o information about users and grants, only specified databases.
 db-dump.bat db_name --no-data    → dump specified database, DDL only (database structure only, no data). Target file has .ddl.sql extension.
-db-dump.bat db_name --ddl        → --ddl option works like --no-data and --no-users combined. Dumps database structure only. Target file has .ddl.sql extension.
+db-dump.bat db_name --ddl        → --ddl option works like --no-data and --no-users combined. Dumps database structure only (DDL) into file with .ddl.sql extension.
 ```
 
 #### 💡 Notes
