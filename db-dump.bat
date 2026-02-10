@@ -1,6 +1,5 @@
 @echo off
-setlocal EnableExtensions
-REM ======================================================================
+REM =================================================================================================
 REM  db-dump.bat
 REM
 REM  Copyright (c) 2025 utilmind
@@ -125,25 +124,25 @@ REM ================== END CONFIG ==================
 
 REM Use UTF-8 encoding for output, if needed
 chcp 65001 >nul
-REM After variables are set, so we can use ^! to escape ! and can use ! in password. Before export.
-setlocal EnableDelayedExpansion
+REM After variables are set, so we can use ^! to escape ! and can use ! in password.
+setlocal EnableExtensions EnableDelayedExpansion
 
 
 REM ================== RESOLVE TOOL PATHS (SQLBIN-aware) ==================
 REM Normalize SQLBIN (ensure trailing backslash) and build full executable paths.
 set "SQLBIN_NORM=%SQLBIN%"
 if defined SQLBIN_NORM (
-  if not "%SQLBIN_NORM%"=="" (
-    if not "%SQLBIN_NORM:~-1%"=="\" set "SQLBIN_NORM=!SQLBIN_NORM!\"
-  )
+    if not "%SQLBIN_NORM%"=="" (
+        if not "%SQLBIN_NORM:~-1%"=="\" set "SQLBIN_NORM=!SQLBIN_NORM!\"
+    )
 )
 if not defined SQLCLI (
-  echo ERROR: SQLCLI ^(mysql.exe or mariadb.exe^) is not defined.
-  goto :end
+    echo ERROR: SQLCLI ^(mysql.exe or mariadb.exe^) is not defined.
+    goto :end
 )
 if not defined SQLDUMP (
-  echo ERROR: SQLDUMP ^(mysqldump.exe or mariadb-dump.exe^) is not defined.
-  goto :end
+    echo ERROR: SQLDUMP ^(mysqldump.exe or mariadb-dump.exe^) is not defined.
+    goto :end
 )
 
 set "SQLCLI_EXE=%SQLBIN_NORM%%SQLCLI%"
@@ -151,16 +150,16 @@ set "SQLDUMP_EXE=%SQLBIN_NORM%%SQLDUMP%"
 
 REM If SQLBIN is provided, ensure the executables exist there (fail fast).
 if not "%SQLBIN_NORM%"=="" (
-  if not exist "%SQLCLI_EXE%" (
-    echo ERROR: %SQLCLI% not found at "%SQLBIN_NORM%".
-    echo Please edit SQLBIN / SQLCLI in "%~nx0".
-    goto :end
-  )
-  if not exist "%SQLDUMP_EXE%" (
-    echo ERROR: %SQLDUMP% not found at "%SQLBIN_NORM%".
-    echo Please edit SQLBIN / SQLDUMP in "%~nx0".
-    goto :end
-  )
+    if not exist "%SQLCLI_EXE%" (
+        echo ERROR: %SQLCLI% not found at "%SQLBIN_NORM%".
+        echo Please edit SQLBIN / SQLCLI in "%~nx0".
+        goto :end
+    )
+    if not exist "%SQLDUMP_EXE%" (
+        echo ERROR: %SQLDUMP% not found at "%SQLBIN_NORM%".
+        echo Please edit SQLBIN / SQLDUMP in "%~nx0".
+        goto :end
+    )
 )
 
 
@@ -191,25 +190,25 @@ REM Connection-related options reused across mysql and mysqldump.
 REM SSL_CA has priority over SKIP_SSL (they are mutually exclusive).
 set "CONN_SSL_OPTS="
 if not "%SSL_CA%"=="" (
-  set "CONN_SSL_OPTS=--ssl --ssl-ca="%SSL_CA%""
+    set "CONN_SSL_OPTS=--ssl --ssl-ca="%SSL_CA%""
 ) else (
-  if "%SKIP_SSL%"=="1" (
-    set "CONN_SSL_OPTS=--skip-ssl"
-  )
+    if "%SKIP_SSL%"=="1" (
+        set "CONN_SSL_OPTS=--skip-ssl"
+    )
 )
 
 REM Enable compression for remote hosts by default (when DB_HOST is set and not localhost/127.0.0.1).
 set "CONN_COMPRESS_OPTS="
 if not "%DB_HOST%"=="" (
-  if /I not "%DB_HOST%"=="localhost" if /I not "%DB_HOST%"=="127.0.0.1" (
-    set "CONN_COMPRESS_OPTS=--compress"
-  )
+    if /I not "%DB_HOST%"=="localhost" if /I not "%DB_HOST%"=="127.0.0.1" (
+        set "CONN_COMPRESS_OPTS=--compress"
+    )
 )
 
 REM If a local defaults file is used, do not force SSL/compress settings via CLI (ini must take precedence).
 if "%USE_DEFAULTS_FILE%"=="1" (
-  set "CONN_SSL_OPTS="
-  set "CONN_COMPRESS_OPTS="
+    set "CONN_SSL_OPTS="
+    set "CONN_COMPRESS_OPTS="
 )
 
 
@@ -238,15 +237,15 @@ REM === CLIENT CLI OPTIONS (mysql.exe, not mysqldump.exe) ===
 REM Add certificate verification flag only when the client supports it.
 set "CONN_VERIFY_CERT_OPTS="
 if "%USE_DEFAULTS_FILE%"=="0" if not "%SSL_CA%"=="" (
-  REM This is --help for `mysql.exe`, don't confuse with --help for mysqldump.exe above. In theory the dump and client apps may have different versions, so detect both for safety.
-  set "MYSQL_HELP_FILE=%TEMP%\mysql_help_%RANDOM%.tmp"
-  "%SQLCLI_EXE%" --help >"%MYSQL_HELP_FILE%" 2>&1
-  if not errorlevel 1 (
-    findstr /C:"--ssl-verify-server-cert" "%MYSQL_HELP_FILE%" >nul 2>&1
-    if not errorlevel 1 set "CONN_VERIFY_CERT_OPTS=--ssl-verify-server-cert"
-  )
-  del "%MYSQL_HELP_FILE%" >nul 2>&1
-  set "MYSQL_HELP_FILE="
+    REM This is --help for `mysql.exe`, don't confuse with --help for mysqldump.exe above. In theory the dump and client apps may have different versions, so detect both for safety.
+    set "MYSQL_HELP_FILE=%TEMP%\mysql_help_%RANDOM%.tmp"
+    "%SQLCLI_EXE%" --help >"%MYSQL_HELP_FILE%" 2>&1
+    if not errorlevel 1 (
+        findstr /C:"--ssl-verify-server-cert" "%MYSQL_HELP_FILE%" >nul 2>&1
+        if not errorlevel 1 set "CONN_VERIFY_CERT_OPTS=--ssl-verify-server-cert"
+    )
+    del "%MYSQL_HELP_FILE%" >nul 2>&1
+    set "MYSQL_HELP_FILE="
 )
 
 REM Combined connection options for all SQL tools (mysql + mysqldump).
@@ -339,8 +338,8 @@ REM ================== END OF SETTINGS ==============
 
 REM Cleanup temporary mysqldump --help file (no longer needed after building COMMON_OPTS)
 if defined MYSQLDUMP_HELP_FILE (
-  if exist "%MYSQLDUMP_HELP_FILE%" del "%MYSQLDUMP_HELP_FILE%" >nul 2>&1
-  set "MYSQLDUMP_HELP_FILE="
+    if exist "%MYSQLDUMP_HELP_FILE%" del "%MYSQLDUMP_HELP_FILE%" >nul 2>&1
+    set "MYSQLDUMP_HELP_FILE="
 )
 
 REM Filename used if we dump ALL databases
@@ -365,18 +364,18 @@ if "%~1"=="" set "NO_ARGS=1"
 
 set "DEFAULTS_OPT="
 if "%USE_DEFAULTS_FILE%"=="1" (
-  REM IMPORTANT: Do NOT embed extra quotes into the option value.
-  REM We keep the raw path in the option and quote the whole argument at call site. So, no "%LOCAL_DEFAULTS_FILE%" here.
-  set "DEFAULTS_OPT=%LOCAL_DEFAULTS_FILE%"
+    REM IMPORTANT: Do NOT embed extra quotes into the option value.
+    REM We keep the raw path in the option and quote the whole argument at call site. So, no "%LOCAL_DEFAULTS_FILE%" here.
+    set "DEFAULTS_OPT=%LOCAL_DEFAULTS_FILE%"
 )
 
 
 
 REM Show general connection info first
 if defined DEFAULTS_OPT (
-  echo Preparing database dump using "%LOCAL_DEFAULTS_FILE%"
+    echo Preparing database dump using "%LOCAL_DEFAULTS_FILE%"
 ) else (
-  echo Preparing database dump from %DB_HOST%:%DB_PORT% on behalf of '%DB_USER%'...
+    echo Preparing database dump from %DB_HOST%:%DB_PORT% on behalf of '%DB_USER%'...
 )
 
 REM === PARSE CLI ARGUMENTS BEFORE ANY USER INPUT ===
@@ -453,93 +452,103 @@ if "%~1"=="" goto :after_args
 
 REM === APPLY --no-data (schema-only) SETTINGS ===
 if "%STRUCTURE_ONLY%"=="1" (
-  REM Ensure mysqldump supports --no-data
-  if not "%HAS_OPT_NO_DATA%"=="1" (
-    echo [ERROR] Your "%SQLDUMP_EXE%" does not support --no-data. Cannot produce schema-only dump.
-    goto :end
-  )
+    REM Ensure mysqldump supports --no-data
+    if not "%HAS_OPT_NO_DATA%"=="1" (
+        echo [ERROR] Your "%SQLDUMP_EXE%" does not support --no-data. Cannot produce schema-only dump.
+        goto :end
+    )
 
-  REM Add schema-only options to mysqldump
-  set "COMMON_OPTS=%COMMON_OPTS% --no-data"
-  if "%HAS_OPT_SKIP_ADD_DROP_TABLE%"=="1" (
-    set "COMMON_OPTS=%COMMON_OPTS% --skip-add-drop-table"
-  )
+    REM Add schema-only options to mysqldump
+    set "COMMON_OPTS=%COMMON_OPTS% --no-data"
+    if "%HAS_OPT_SKIP_ADD_DROP_TABLE%"=="1" (
+        set "COMMON_OPTS=%COMMON_OPTS% --skip-add-drop-table"
+    )
 
-  REM When schema-only is requested, post-processor should also strip remaining DROP* statements
-  set "POSTPROC_NODROP=--no-drop"
+    REM When schema-only is requested, post-processor should also strip remaining DROP* statements
+    set "POSTPROC_NODROP=--no-drop"
 
-  REM Change output filenames extension to .ddl.sql (DDL-only dump)
-  call :ensure_ddl_extension OUTFILE
+    REM Change output filenames extension to .ddl.sql (DDL-only dump)
+    call :ensure_ddl_extension OUTFILE
 
 ) else (
-  set "POSTPROC_NODROP="
+    set "POSTPROC_NODROP="
 )
 
 REM === SHOW PLANNED ACTION BEFORE ASKING FOR PASSWORD ===
 for %%I in ("%OUTFILE%") do set "OUTFILE_FULL_PATH=%%~fI"
 for %%I in ("%OUTDIR%") do set "OUTDIR_FULL_PATH=%%~fI"
 if "%DBNAMES%"=="" (
-  REM No databases provided in CLI -> will dump ALL non-system databases
-  if "%ONE_MODE%"=="1" (
-    echo Planned action:
-    if defined DEFAULTS_OPT (
-      echo   Dump ALL non-system databases ^(connection: from ini file^) into ONE file:
+    REM No databases provided in CLI -> will dump ALL non-system databases
+    if "%ONE_MODE%"=="1" (
+        echo Planned action:
+        if defined DEFAULTS_OPT (
+            echo   Dump ALL non-system databases ^(connection: from ini file^) into ONE file:
+        ) else (
+            echo   Dump ALL non-system databases from %DB_HOST%:%DB_PORT% into ONE file:
+        )
+        echo     "%OUTFILE_FULL_PATH%"
     ) else (
-      echo   Dump ALL non-system databases from %DB_HOST%:%DB_PORT% into ONE file:
+        echo Planned action:
+        if defined DEFAULTS_OPT (
+            echo   Dump ALL non-system databases ^(connection: from ini file^) into separate files to the following directory:
+        ) else (
+            echo   Dump ALL non-system databases from %DB_HOST%:%DB_PORT% into separate files to the following directory:
+        )
+        echo     "%OUTDIR_FULL_PATH%"
     )
-    echo     "%OUTFILE_FULL_PATH%"
-  ) else (
-    echo Planned action:
-    if defined DEFAULTS_OPT (
-      echo   Dump ALL non-system databases ^(connection: from ini file^) into separate files to the following directory:
-    ) else (
-      echo   Dump ALL non-system databases from %DB_HOST%:%DB_PORT% into separate files to the following directory:
-    )
-    echo     "%OUTDIR_FULL_PATH%"
-  )
 ) else (
-  REM Databases explicitly provided by the user
-  if "%ONE_MODE%"=="1" (
-    echo Planned action:
-    if defined DEFAULTS_OPT (
-      echo   Dump database^(s^) `%DBNAMES%` ^(connection: from ini file^) into ONE file:
+    REM Databases explicitly provided by the user
+    if "%ONE_MODE%"=="1" (
+        echo Planned action:
+        if defined DEFAULTS_OPT (
+            echo   Dump database^(s^) `%DBNAMES%` ^(connection: from ini file^) into ONE file:
+        ) else (
+            echo   Dump database^(s^) `%DBNAMES%` from %DB_HOST%:%DB_PORT% into ONE file:
+        )
+        echo     "%OUTFILE_FULL_PATH%"
     ) else (
-      echo   Dump database^(s^) `%DBNAMES%` from %DB_HOST%:%DB_PORT% into ONE file:
+        echo Planned action:
+        if defined DEFAULTS_OPT (
+            echo   Dump database^(s^) `%DBNAMES%` ^(connection: from ini file^) into separate file^(s^) to the following directory:
+        ) else (
+            echo   Dump database^(s^) `%DBNAMES%` from %DB_HOST%:%DB_PORT% into separate file^(s^) to the following directory:
+        )
+        echo     "%OUTDIR_FULL_PATH%"
     )
-    echo     "%OUTFILE_FULL_PATH%"
-  ) else (
-    echo Planned action:
-    if defined DEFAULTS_OPT (
-      echo   Dump database^(s^) `%DBNAMES%` ^(connection: from ini file^) into separate file^(s^) to the following directory:
-    ) else (
-      echo   Dump database^(s^) `%DBNAMES%` from %DB_HOST%:%DB_PORT% into separate file^(s^) to the following directory:
-    )
-    echo     "%OUTDIR_FULL_PATH%"
-  )
 )
 echo.
 
 if not defined DEFAULTS_OPT  (
-  REM === ONLY NOW ASK FOR PASSWORD (IF NOT SET IN SCRIPT) ===
-  REM If we use --defaults-extra-file, password MUST come from the ini; no prompt.
-  if "%DB_PASS%"=="" (
-    echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^) or press Ctrl+C to terminate.
+    REM === ONLY NOW ASK FOR PASSWORD (IF NOT SET IN SCRIPT) ===
+    REM If we use --defaults-extra-file, password MUST come from the ini; no prompt.
+    if "!DB_PASS!"=="" (
+        echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^) or press Ctrl+C to terminate.
 
-    setlocal DisableDelayedExpansion
-    set /p "DB_PASS=> "
-    endlocal & set "DB_PASS=%DB_PASS%"
+        setlocal DisableDelayedExpansion
+        set /p "DB_PASS=> "
+        setlocal EnableDelayedExpansion
+        if defined DB_PASS (
+            for /f "delims=" %%A in ("!DB_PASS!") do (
+                endlocal
+                set "DB_PASS=%%A"
+            )
+        ) else (
+            endlocal
+        )
+        setlocal EnableDelayedExpansion
+        REM the password now stored in !DB_PASS! in the topmost scope
 
-    set "PASS_WAS_PROMPTED=1"
-    echo.
-  )
+        set "PASS_WAS_PROMPTED=1"
+        echo.
+    )
 
-  REM === Pause only when user did NOT enter a password AND no params were given ===
-  REM If we use a local ini, skip the pause.
-  if "%NO_ARGS%"=="1" if "!PASS_WAS_PROMPTED!"=="0" (
-    echo.
-    pause
-    echo.
-  )
+    REM === Pause only when user did NOT enter a password AND no params were given ===
+    REM If we use a local ini, skip the pause.
+    if "%NO_ARGS%"=="1" if "!PASS_WAS_PROMPTED!"=="0" (
+        echo.
+        pause
+        echo.
+    )
 )
 
 REM Create output directory
@@ -549,16 +558,16 @@ REM NOTE: --defaults-extra-file MUST go first.
 set "MYSQL_AUTH_OPTS="
 set "DUMP_AUTH_OPTS="
 if defined DEFAULTS_OPT (
-  REM When using option file, do not pass hardcoded connection/SSL params on CLI (so ini can override).
-  REM Quote the whole argument so paths with spaces work (e.g. C:\Program Files\...).
-  set "MYSQL_AUTH_OPTS=--defaults-extra-file="%DEFAULTS_OPT%""
-  set "DUMP_AUTH_OPTS=--defaults-extra-file="%DEFAULTS_OPT%""
-  REM Also disable script-side SSL CLI options (they would override ini).
-  set "MYSQL_CONN_OPTS="
-  set "DUMP_CONN_OPTS="
+    REM When using option file, do not pass hardcoded connection/SSL params on CLI (so ini can override).
+    REM Quote the whole argument so paths with spaces work (e.g. C:\Program Files\...).
+    set "MYSQL_AUTH_OPTS=--defaults-extra-file="%DEFAULTS_OPT%""
+    set "DUMP_AUTH_OPTS=--defaults-extra-file="%DEFAULTS_OPT%""
+    REM Also disable script-side SSL CLI options (they would override ini).
+    set "MYSQL_CONN_OPTS="
+    set "DUMP_CONN_OPTS="
 ) else (
-  set "MYSQL_AUTH_OPTS=-h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %MYSQL_CONN_OPTS%"
-  set "DUMP_AUTH_OPTS=-h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p%DB_PASS% %DUMP_CONN_OPTS%"
+    set "MYSQL_AUTH_OPTS=-h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p!DB_PASS! %MYSQL_CONN_OPTS%"
+    set "DUMP_AUTH_OPTS=-h "%DB_HOST%" -P %DB_PORT% -u "%DB_USER%" -p!DB_PASS! %DUMP_CONN_OPTS%"
 )
 if not exist "%OUTDIR%" mkdir "%OUTDIR%"
 
@@ -566,18 +575,18 @@ if not exist "%OUTDIR%" mkdir "%OUTDIR%"
 REM Optionally export users and grants via the separate script.
 REM Important to prepare it in the beginning, to include to the _all_databases_ export.
 if "%EXPORT_USERS_AND_GRANTS%"=="1" (
-  REM === Exporting users and grants using dump-users-and-grants.bat ===
-  REM Pass SSL options to the child script. SSL_CA has priority over SKIP_SSL.
-  REM To prevent accidental "--skip-ssl"+"--ssl-ca" combos, we pass an effective SKIP_SSL=0 when SSL_CA is set.
-  set "CHILD_SKIP_SSL=%SKIP_SSL%"
-  if not "%SSL_CA%"=="" set "CHILD_SKIP_SSL=0"
-  REM Don't skip any parameter. All positions are important. Password will not be used if %LOCAL_DEFAULTS_FILE% provided.
-  if "%DB_PASS%"=="" set "DB_PASS=*"
-  @call "%~dp0dump-users-and-grants.bat" "%SQLBIN%" "%DB_HOST%" "%DB_PORT%" "%DB_USER%" "%DB_PASS%" "%OUTDIR%" "%USERDUMP%" "%CHILD_SKIP_SSL%" "%SSL_CA%" "%LOCAL_DEFAULTS_FILE%"
-  if not exist "%USERDUMP%" (
-    REM echo WARNING: "%USERDUMP%" not found, will create dump with data only, without users/grants.
-    goto :end
-  )
+    REM === Exporting users and grants using dump-users-and-grants.bat ===
+    REM Pass SSL options to the child script. SSL_CA has priority over SKIP_SSL.
+    REM To prevent accidental "--skip-ssl"+"--ssl-ca" combos, we pass an effective SKIP_SSL=0 when SSL_CA is set.
+    set "CHILD_SKIP_SSL=%SKIP_SSL%"
+    if not "%SSL_CA%"=="" set "CHILD_SKIP_SSL=0"
+    REM Don't skip any parameter. All positions are important. Password will not be used if %LOCAL_DEFAULTS_FILE% provided.
+    if "!DB_PASS!"=="" set "DB_PASS=*"
+    @call "%~dp0dump-users-and-grants.bat" "%SQLBIN%" "%DB_HOST%" "%DB_PORT%" "%DB_USER%" "!DB_PASS!" "%OUTDIR%" "%USERDUMP%" "%CHILD_SKIP_SSL%" "%SSL_CA%" "%LOCAL_DEFAULTS_FILE%"
+    if not exist "%USERDUMP%" (
+        REM echo WARNING: "%USERDUMP%" not found, will create dump with data only, without users/grants.
+        goto :end
+    )
 )
 
 REM If DB names are passed as arguments, use them directly.
@@ -589,8 +598,8 @@ echo === Getting database list...
 REM     this way could exclude system tables immediately, but this doesn't exports *empty* databases (w/o tables yet), which still could be important. So let's keep canonical SHOW DATABASES, then filter it.
 REM AK: Alternatively we could use `SELECT DISTINCT TABLE_SCHEMA FROM information_schema.tables WHERE TABLE_SCHEMA NOT IN ("information_schema", "performance_schema", "mysql", "sys");`,
 if errorlevel 1 (
-  echo ERROR: Could not retrieve database list.
-  goto :end
+    echo ERROR: Could not retrieve database list.
+    goto :end
 )
 
 REM If DBNAMES is empty, we will dump ALL non-system databases.
@@ -598,75 +607,75 @@ REM If DBNAMES is NOT empty, we will validate each requested database against th
 
 if "%DBNAMES%"=="" (
 
-  REM Build a list of non-system database names into DBNAMES
-  set "DBNAMES="
-  for /f "usebackq delims=" %%D in ("%DBLIST%") do (
-    set "DB=%%D"
-    if /I not "!DB!"=="information_schema" if /I not "!DB!"=="performance_schema" if /I not "!DB!"=="sys" if /I not "!DB!"=="mysql" (
-      set "DBNAMES=!DBNAMES!!DB! "
+    REM Build a list of non-system database names into DBNAMES
+    set "DBNAMES="
+    for /f "usebackq delims=" %%D in ("%DBLIST%") do (
+        set "DB=%%D"
+        if /I not "!DB!"=="information_schema" if /I not "!DB!"=="performance_schema" if /I not "!DB!"=="sys" if /I not "!DB!"=="mysql" (
+            set "DBNAMES=!DBNAMES!!DB! "
+        )
     )
-  )
 
-  del "%DBLIST%" 2>nul
+    del "%DBLIST%" 2>nul
 
-  if "!DBNAMES!"=="" (
-    echo No non-system databases found.
-    goto :after_dumps
-  )
+    if "!DBNAMES!"=="" (
+        echo No non-system databases found.
+        goto :after_dumps
+    )
 
-  set "ALL_DB_MODE=1"
+    set "ALL_DB_MODE=1"
 
 ) else (
 
-  REM User provided one or more database names on the CLI: validate them.
-  set "VALID_DBNAMES="
+    REM User provided one or more database names on the CLI: validate them.
+    set "VALID_DBNAMES="
 
-  for %%D in (!DBNAMES!) do (
-    REM Check if this database exists in the SHOW DATABASES output
-    set "FOUND_DB="
+    for %%D in (!DBNAMES!) do (
+        REM Check if this database exists in the SHOW DATABASES output
+        set "FOUND_DB="
 
-    for /f "usebackq delims=" %%X in ("%DBLIST%") do (
-      if /I "%%D"=="%%X" (
-        set "FOUND_DB=1"
-      )
+        for /f "usebackq delims=" %%X in ("%DBLIST%") do (
+            if /I "%%D"=="%%X" (
+                set "FOUND_DB=1"
+            )
+        )
+
+        if not defined FOUND_DB (
+            echo.
+            echo [WARN] Database '%%D' does not exist on %DB_HOST%:%DB_PORT%.
+            choice /C YN /N /M "Continue without this database? [Y/N]: "
+            if errorlevel 2 (
+                echo.
+                echo Aborting on user request.
+                del "%DBLIST%" 2>nul
+                goto :after_dumps
+            ) else (
+                echo Skipping database '%%D'.
+            )
+        ) else (
+            if defined VALID_DBNAMES (
+                set "VALID_DBNAMES=!VALID_DBNAMES! %%D"
+            ) else (
+                set "VALID_DBNAMES=%%D"
+            )
+        )
     )
 
-    if not defined FOUND_DB (
-      echo.
-      echo [WARN] Database '%%D' does not exist on %DB_HOST%:%DB_PORT%.
-      choice /C YN /N /M "Continue without this database? [Y/N]: "
-      if errorlevel 2 (
-        echo.
-        echo Aborting on user request.
-        del "%DBLIST%" 2>nul
+    del "%DBLIST%" 2>nul
+
+    if not defined VALID_DBNAMES (
+        echo No valid databases remain after validation. Nothing to dump.
         goto :after_dumps
-      ) else (
-        echo Skipping database '%%D'.
-      )
-    ) else (
-      if defined VALID_DBNAMES (
-        set "VALID_DBNAMES=!VALID_DBNAMES! %%D"
-      ) else (
-        set "VALID_DBNAMES=%%D"
-      )
     )
-  )
 
-  del "%DBLIST%" 2>nul
-
-  if not defined VALID_DBNAMES (
-    echo No valid databases remain after validation. Nothing to dump.
-    goto :after_dumps
-  )
-
-  set "DBNAMES=!VALID_DBNAMES!"
+    set "DBNAMES=!VALID_DBNAMES!"
 )
 
 :mode_selection
 if "%ALL_DB_MODE%"=="1" (
-  echo Dumping ALL databases from %DB_HOST%:%DB_PORT%: !DBNAMES!
+    echo Dumping ALL databases from %DB_HOST%:%DB_PORT%: !DBNAMES!
 ) else (
-  echo Dumping !DBNAMES! from %DB_HOST%:%DB_PORT%
+    echo Dumping !DBNAMES! from %DB_HOST%:%DB_PORT%
 )
 echo.
 
@@ -674,19 +683,19 @@ REM Build comma-separated, quoted database list for SQL IN (...)
 set "DBNAMES_IN="
 
 for %%D in (!DBNAMES!) do (
-  if defined DBNAMES_IN (
-    set "DBNAMES_IN=!DBNAMES_IN!, '%%D'"
-  ) else (
-    set "DBNAMES_IN='%%D'"
-  )
+    if defined DBNAMES_IN (
+        set "DBNAMES_IN=!DBNAMES_IN!, '%%D'"
+    ) else (
+        set "DBNAMES_IN='%%D'"
+    )
 )
 
 REM === Dump default table schemas, to be able to restore everything exactly as on original server ===
 echo Dumping table metadata to '%TABLE_SCHEMAS%'...
 "%SQLCLI_EXE%" %MYSQL_AUTH_OPTS% -N -B -e "SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, ROW_FORMAT, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA IN (!DBNAMES_IN!) ORDER BY TABLE_SCHEMA, TABLE_NAME;" > "%TABLE_SCHEMAS%"
 if errorlevel 1 (
-  echo ERROR: Could not dump table metadata.
-  goto :end
+    echo ERROR: Could not dump table metadata.
+    goto :end
 )
 
 echo Table metadata saved to '%TABLE_SCHEMAS%'.
@@ -699,7 +708,7 @@ REM ================== MODE 1: ALL DATABASES SEPARATELY (DEFAULT) ==============
 echo Dumping each database into its own file...
 
 for %%D in (!DBNAMES!) do (
-  call :dump_single_db "%%D"
+    call :dump_single_db "%%D"
 )
 
 goto :after_dumps
@@ -710,9 +719,9 @@ REM ================== MODE 2: ALL DATABASES INTO ONE FILE ==================
 REM Here we create ONE combined dump using a single mysqldump call.
 
 if "%ALL_DB_MODE%"=="1" (
-  echo Dumping ALL non-system databases into a single file...
+    echo Dumping ALL non-system databases into a single file...
 ) else (
-  echo Dumping selected databases into a single file...
+    echo Dumping selected databases into a single file...
 )
 
 REM Raw combined dump (before post-processing)
@@ -721,10 +730,10 @@ set "ALLDATA=%OUTDIR%\_db_data.sql"
 
 REM Prepare the name for the cleaned dump if post-processing is enabled
 if "%POST_PROCESS_DUMP%"=="1" (
-  REM %%~dpnF = drive + path + name (no extension), %%~xF = extension
-  for %%F in ("%ALLDATA%") do (
-    set "ALLDATA_CLEAN=%%~dpnF%POST_PROCESS_APPENDIX%%%~xF"
-  )
+    REM %%~dpnF = drive + path + name (no extension), %%~xF = extension
+    for %%F in ("%ALLDATA%") do (
+        set "ALLDATA_CLEAN=%%~dpnF%POST_PROCESS_APPENDIX%%%~xF"
+    )
 )
 
 echo Raw output file will be: "%ALLDATA%"
@@ -734,38 +743,38 @@ REM (stderr goes to log, output goes directly to ALLDATA)
 "%SQLDUMP_EXE%" %DUMP_AUTH_OPTS% %COMMON_OPTS% --databases !DBNAMES! --result-file="%ALLDATA%" 2>> "%LOG%"
 
 if errorlevel 1 (
-  echo [%DATE% %TIME%] ERROR dumping multiple databases >> "%LOG%"
-  echo [ERROR] Failed to dump multiple databases. See log: "%LOG%"
-  echo.
-  goto :after_dumps
+    echo [%DATE% %TIME%] ERROR dumping multiple databases >> "%LOG%"
+    echo [ERROR] Failed to dump multiple databases. See log: "%LOG%"
+    echo.
+    goto :after_dumps
 ) else (
-  echo Combined raw dump created.
+    echo Combined raw dump created.
 )
 
 REM Decide what will be the final file (with or without post-processing)
 set "FINAL_DUMP=%ALLDATA%"
 
 if "%POST_PROCESS_DUMP%"=="1" (
-  set "PREPEND_DUMP="
+    set "PREPEND_DUMP="
 
-  REM If we have users+grants dump, tell post-processor to prepend it
-  if "%EXPORT_USERS_AND_GRANTS%"=="1" (
-    if exist "%USERDUMP%" (
-      echo Post-processing and prepending users dump ^(_users_and_grants.sql^)...
-      set "PREPEND_DUMP= --prepend-file "%USERDUMP%""
+    REM If we have users+grants dump, tell post-processor to prepend it
+    if "%EXPORT_USERS_AND_GRANTS%"=="1" (
+        if exist "%USERDUMP%" (
+            echo Post-processing and prepending users dump ^(_users_and_grants.sql^)...
+            set "PREPEND_DUMP= --prepend-file "%USERDUMP%""
+        )
     )
-  )
 
-  echo Post-processing combined dump...
-  REM IMPORTANT: here we do NOT pass --db-name, because this is a multi-database dump
-  %POST_PROCESSOR% %POSTPROC_NODROP%!PREPEND_DUMP! "%ALLDATA%" "%ALLDATA_CLEAN%" "%TABLE_SCHEMAS%"
+    echo Post-processing combined dump...
+    REM IMPORTANT: here we do NOT pass --db-name, because this is a multi-database dump
+    %POST_PROCESSOR% %POSTPROC_NODROP%!PREPEND_DUMP! "%ALLDATA%" "%ALLDATA_CLEAN%" "%TABLE_SCHEMAS%"
 
-  if errorlevel 1 (
-    echo [WARN] Post-processing failed for "%ALLDATA%". Keeping raw dump.
-    if exist "%ALLDATA_CLEAN%" del "%ALLDATA_CLEAN%" 2>nul
-  ) else (
-    set "FINAL_DUMP=%ALLDATA_CLEAN%"
-  )
+    if errorlevel 1 (
+        echo [WARN] Post-processing failed for "%ALLDATA%". Keeping raw dump.
+        if exist "%ALLDATA_CLEAN%" del "%ALLDATA_CLEAN%" 2>nul
+    ) else (
+        set "FINAL_DUMP=%ALLDATA_CLEAN%"
+    )
 )
 
 REM Move final dump (raw or cleaned) to OUTFILE (this is what we show in "Planned action")
@@ -792,9 +801,9 @@ set "VARNAME=%~1"
 for %%A in ("!%VARNAME%!") do set "VAL=%%~A"
 REM Normalize: if ends with .sql -> replace; else append .ddl.sql
 if /I "!VAL:~-4!"==".sql" (
-  set "VAL=!VAL:~0,-4!.ddl.sql"
+    set "VAL=!VAL:~0,-4!.ddl.sql"
 ) else (
-  set "VAL=!VAL!.ddl.sql"
+    set "VAL=!VAL!.ddl.sql"
 )
 endlocal & set "%~1=%VAL%"
 goto :EOF
@@ -809,10 +818,10 @@ set "DBNAME=%~1"
 set "TARGET=%~2"
 
 if "%TARGET%"=="" (
-  set "TARGET=%OUTDIR%\%DBNAME%.sql"
+    set "TARGET=%OUTDIR%\%DBNAME%.sql"
 )
 if "%STRUCTURE_ONLY%"=="1" (
-  call :ensure_ddl_extension TARGET
+    call :ensure_ddl_extension TARGET
 )
 
 
@@ -820,31 +829,31 @@ echo --- Dumping database '%DBNAME%' to '%TARGET%'...
 REM Alternatively we could specify --result-file="%TARGET%", but we want error log anyway.
 "%SQLDUMP_EXE%" %DUMP_AUTH_OPTS% %COMMON_OPTS% "%DBNAME%" 1>> "%TARGET%" 2>> "%LOG%"
 if errorlevel 1 (
-  REM These messages are good to search, so append the following line %LOG% to log...
-  echo [%DATE% %TIME%] ERROR dumping database '%DBNAME%' >> "%LOG%"
-  echo [ERROR] Failed to dump database '%DBNAME%'. See log: "%LOG%"
-  endlocal
-  goto :EOF
+    REM These messages are good to search, so append the following line %LOG% to log...
+    echo [%DATE% %TIME%] ERROR dumping database '%DBNAME%' >> "%LOG%"
+    echo [ERROR] Failed to dump database '%DBNAME%'. See log: "%LOG%"
+    endlocal
+    goto :EOF
 )
 
 REM Post-process the dump if requested
 if "%POST_PROCESS_DUMP%"=="1" (
-  REM Build CLEAN_TARGET as: <path><name><appendix><ext>. E.g. my-dump.sql + .clean => my-dump.clean.sql
-  for %%I in ("%TARGET%") do set "CLEAN_TARGET=%%~dpnI%POST_PROCESS_APPENDIX%%%~xI"
+    REM Build CLEAN_TARGET as: <path><name><appendix><ext>. E.g. my-dump.sql + .clean => my-dump.clean.sql
+    for %%I in ("%TARGET%") do set "CLEAN_TARGET=%%~dpnI%POST_PROCESS_APPENDIX%%%~xI"
 
-  echo Post-processing dump '%TARGET%' into '!CLEAN_TARGET!'...
-  %POST_PROCESSOR% %POSTPROC_NODROP% --db-name "%DBNAME%" "%TARGET%" "!CLEAN_TARGET!" "%TABLE_SCHEMAS%"
-  if errorlevel 1 (
-    echo [WARN] Post-processing failed for '%TARGET%'. Keeping original dump.
-    if defined CLEAN_TARGET del "!CLEAN_TARGET!" 2>nul
-  ) else (
-    if defined CLEAN_TARGET (
-        move /Y "!CLEAN_TARGET!" "%TARGET%" >nul
+    echo Post-processing dump '%TARGET%' into '!CLEAN_TARGET!'...
+    %POST_PROCESSOR% %POSTPROC_NODROP% --db-name "%DBNAME%" "%TARGET%" "!CLEAN_TARGET!" "%TABLE_SCHEMAS%"
+    if errorlevel 1 (
+        echo [WARN] Post-processing failed for '%TARGET%'. Keeping original dump.
+        if defined CLEAN_TARGET del "!CLEAN_TARGET!" 2>nul
+    ) else (
+        if defined CLEAN_TARGET (
+            move /Y "!CLEAN_TARGET!" "%TARGET%" >nul
 
-        for %%I in ("%TARGET%") do set "TARGET_FULL_PATH=%%~fI"
-        echo Post-processing completed for '!TARGET_FULL_PATH!'.
+            for %%I in ("%TARGET%") do set "TARGET_FULL_PATH=%%~fI"
+            echo Post-processing completed for '!TARGET_FULL_PATH!'.
+        )
     )
-  )
 )
 
 endlocal
@@ -858,16 +867,15 @@ del "%TABLE_SCHEMAS%" 2>nul
 REM ==== Summary about log file (check, whether %LOG% is empty or not) ====
 set "LOGSIZE=0"
 if exist "%LOG%" (
-  for %%A in ("%LOG%") do set "LOGSIZE=%%~zA"
+    for %%A in ("%LOG%") do set "LOGSIZE=%%~zA"
 )
 
 if %LOGSIZE% GTR 0 (
-  echo Some errors or warnings were recorded in: %LOG%
+    echo Some errors or warnings were recorded in: %LOG%
 ) else (
-  echo No errors recorded.
-  del "%LOG%" >nul 2>&1
+    echo No errors recorded.
+    del "%LOG%" >nul 2>&1
 )
 
 :end
-endlocal
 endlocal

@@ -1,5 +1,4 @@
 @echo off
-setlocal EnableExtensions
 REM ======================================================================
 REM  dump-users-and-grants.bat
 REM
@@ -57,6 +56,12 @@ set "SKIP_SSL=0"
 REM Optional: path to a trusted CA bundle (PEM). If set, it overrides SKIP_SSL.
 REM Example (AWS RDS): https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.SSL.html
 set "SSL_CA="
+REM =========================== END OF CONFIG ===========================
+
+REM Use UTF-8 encoding for output, if needed
+chcp 65001 >nul
+REM After variables are set, so we can use ^! to escape ! and can use ! in password.
+setlocal EnableExtensions EnableDelayedExpansion
 
 
 REM --------- Override config from arguments if provided ----------
@@ -102,7 +107,22 @@ if not defined DEFAULTS_OPT (
   if "%DB_PASS%"=="*" set "DB_PASS="
   REM Ask for password only if DB_PASS is empty after overrides
   if "%DB_PASS%"=="" (
-    echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^)
+    echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^) or press Ctrl+C to terminate.
+
+    setlocal DisableDelayedExpansion
+    set /p "DB_PASS=> "
+    setlocal EnableDelayedExpansion
+    if defined DB_PASS (
+        for /f "delims=" %%A in ("!DB_PASS!") do (
+            endlocal
+            set "DB_PASS=%%A"
+        )
+    ) else (
+        endlocal
+    )
+    setlocal EnableDelayedExpansion
+    REM the password now stored in !DB_PASS! in the topmost scope
+
     set /p "DB_PASS=> "
     echo.
   )
@@ -216,5 +236,4 @@ if exist "%LOG%" (
 )
 
 :end
-endlocal
 endlocal
