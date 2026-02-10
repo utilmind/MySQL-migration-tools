@@ -35,6 +35,7 @@ REM             Valid options:
 REM                 --one[=dump-name.sql] - dumps all into single file. Filename can be specified.
 REM                 --no-users - doesn't export user grants and privileges.
 REM                 --no-data  - dump only schema (DDL) without data (output extension becomes .ddl.sql).
+REM                 --ddl      - apply both `--no-users` and `--no-data`. Produce only pure DDL, w/o data.
 REM
 REM =================================================================================================
 
@@ -422,6 +423,15 @@ if "%~1"=="" goto :after_args
         shift
         goto :parse_args
     )
+
+    REM DDL-only mode: implies --no-users and --no-data
+    if /I "%ARG%"=="--DDL" (
+        set "EXPORT_USERS_AND_GRANTS=0"
+        set "STRUCTURE_ONLY=1"
+        shift
+        goto :parse_args
+    )
+
 
     REM Dump only schema (no data rows)
     if /I "%ARG%"=="--NO-DATA" (
