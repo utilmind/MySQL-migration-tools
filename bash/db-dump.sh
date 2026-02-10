@@ -178,7 +178,7 @@ print_help() {
   scriptName=$(basename "$0")
   cat << EOF
 Usage:
-    $scriptName [--options] dump-name.sql [configuration-name] ["table1 table2 ..."]
+    $scriptName [--ddl] [--skip-optimize] dump-name.sql [configuration-name] ["table1 table2 ..."]
 
 Options:
     --no-data OR --ddl (if you prefer .ddl.sql extensions)
@@ -186,7 +186,7 @@ Options:
         statements (DROP TABLE / DROP VIEW / DROP TRIGGER / etc.) will be
         removed from the final SQL file to make the schema safer for analysis
         tools and AI without exposing real data.
-        --ddl it is a synonym for --no-data. If --ddl is used, it produce files with .ddl.sql extension.
+        --ddl it is a synonym for --no-data. If --ddl is used, produced file has .ddl.sql extension.
 
     --skip-optimize
         Do not run optimize-tables.sh before dumping (skip MyISAM OPTIMIZE / InnoDB ANALYZE).
