@@ -826,8 +826,10 @@ if "%STRUCTURE_ONLY%"=="1" (
 
 
 echo --- Dumping database '%DBNAME%' to '%TARGET%'...
-REM Alternatively we could specify --result-file="%TARGET%", but we want error log anyway.
-"%SQLDUMP_EXE%" %DUMP_AUTH_OPTS% %COMMON_OPTS% "%DBNAME%" 1>> "%TARGET%" 2>> "%LOG%"
+REM Use --result-file to overwrite output (avoid duplicated headers on repeated runs) while keeping stderr in the log.
+"%SQLDUMP_EXE%" %DUMP_AUTH_OPTS% %COMMON_OPTS% --databases "%DBNAME%" --result-file="%TARGET%" 2>> "%LOG%"
+REM Alternative to the more straightforward command above.
+REM "%SQLDUMP_EXE%" %DUMP_AUTH_OPTS% %COMMON_OPTS% "%DBNAME%" 1>> "%TARGET%" 2>> "%LOG%"
 if errorlevel 1 (
     REM These messages are good to search, so append the following line %LOG% to log...
     echo [%DATE% %TIME%] ERROR dumping database '%DBNAME%' >> "%LOG%"
