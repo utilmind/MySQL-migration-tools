@@ -76,10 +76,14 @@ if not "%~8"=="" set "SKIP_SSL=%~8"
 if not "%~9"=="" set "SSL_CA=%~9"
 
 
-REM Use UTF-8 encoding for output, if needed
-chcp 65001 >nul
-REM After variables are set, so we can use ^! to escape ! and can use ! in password. Before export.
-setlocal EnableDelayedExpansion
+REM Set target file names, after %OUTDIR% is defined.
+REM (Don't use exclamation sign in file names, to avoid !VAR! issues.)
+REM Default output file if not provided via args.
+if not defined USERDUMP set "USERDUMP=%OUTDIR%\_users_and_grants.sql"
+REM Log and temporary files
+set "LOG=%OUTDIR%\__users_errors.log"
+set "USERLIST=%TEMP%\__user-list.txt"
+set "TMPGRANTS=%TEMP%\__grants-tmp.txt"
 
 
 REM Local option file (.mysql-client.ini) handling.
@@ -92,14 +96,23 @@ if exist "%LOCAL_DEFAULTS_FILE%" (
 )
 
 
-REM Set target file names, after %OUTDIR% is defined.
-REM (Don't use exclamation sign in file names, to avoid !VAR! issues.)
-REM Default output file if not provided via args.
-if not defined USERDUMP set "USERDUMP=%OUTDIR%\_users_and_grants.sql"
-REM Log and temporary files
-set "LOG=%OUTDIR%\__users_errors.log"
-set "USERLIST=%TEMP%\__user-list.txt"
-set "TMPGRANTS=%TEMP%\__grants-tmp.txt"
+REM Ask for password only if DB_PASS is empty after overrides (and no defaults-extra-file is used)
+if not defined DEFAULTS_OPT (
+  REM If the caller passed "*" as password, treat it as "no password provided".
+  if "%DB_PASS%"=="*" set "DB_PASS="
+  REM Ask for password only if DB_PASS is empty after overrides
+  if "%DB_PASS%"=="" (
+    echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^)
+    set /p "DB_PASS=> "
+    echo.
+  )
+)
+
+
+REM Use UTF-8 encoding for output, if needed
+chcp 65001 >nul
+REM After variables are set, so we can use ^! to escape ! and can use ! in password. Before export, after any password inputs.
+setlocal EnableDelayedExpansion
 
 
 REM Add trailing slash (\) to the end of %SQLBIN%, if it's not empty.
@@ -115,17 +128,6 @@ if defined SQLBIN (
   )
 )
 
-REM Ask for password only if DB_PASS is empty after overrides (and no defaults-extra-file is used)
-if not defined DEFAULTS_OPT (
-  REM If the caller passed "*" as password, treat it as "no password provided".
-  if "%DB_PASS%"=="*" set "DB_PASS="
-  REM Ask for password only if DB_PASS is empty after overrides
-  if "%DB_PASS%"=="" (
-    echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^)
-    set /p "DB_PASS=> "
-    echo.
-  )
-)
 
 if not exist "%OUTDIR%" mkdir "%OUTDIR%"
 

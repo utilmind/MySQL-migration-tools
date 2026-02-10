@@ -480,7 +480,11 @@ if not defined DEFAULTS_OPT  (
   REM If we use --defaults-extra-file, password MUST come from the ini; no prompt.
   if "%DB_PASS%"=="" (
     echo Enter password for %DB_USER%@%DB_HOST% ^(INPUT WILL BE VISIBLE^) or press Ctrl+C to terminate.
+
+    setlocal DisableDelayedExpansion
     set /p "DB_PASS=> "
+    endlocal & set "DB_PASS=%DB_PASS%"
+
     set "PASS_WAS_PROMPTED=1"
     echo.
   )
