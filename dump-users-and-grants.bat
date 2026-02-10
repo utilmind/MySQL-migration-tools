@@ -1,4 +1,5 @@
 @echo off
+setlocal EnableExtensions
 REM ======================================================================
 REM  dump-users-and-grants.bat
 REM
@@ -74,6 +75,13 @@ if not "%~7"=="" set "USERDUMP=%~7"
 if not "%~8"=="" set "SKIP_SSL=%~8"
 if not "%~9"=="" set "SSL_CA=%~9"
 
+
+REM Use UTF-8 encoding for output, if needed
+chcp 65001 >nul
+REM After variables are set, so we can use ^! to escape ! and can use ! in password. Before export.
+setlocal EnableDelayedExpansion
+
+
 REM Local option file (.mysql-client.ini) handling.
 REM We intentionally DO NOT rely on %~10, because positional parameters >=10 are error-prone in cmd.exe.
 REM Instead, we probe the ini next to this script.
@@ -128,10 +136,6 @@ REM Unlikely temporary files are still there, but just in case.
 del "%USERLIST%" 2>nul
 del "%TMPGRANTS%" 2>nul
 
-
-REM After variables are set, so we can use ^! to escape !. Before export.
-setlocal EnableExtensions EnableDelayedExpansion
-chcp 65001 >nul
 
 echo === Exporting users and grants to "%USERDUMP%" ===
 
@@ -210,4 +214,5 @@ if exist "%LOG%" (
 )
 
 :end
+endlocal
 endlocal

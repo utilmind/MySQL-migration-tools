@@ -1,4 +1,5 @@
 @echo off
+setlocal EnableExtensions
 REM ======================================================================
 REM  db-dump.bat
 REM
@@ -123,7 +124,9 @@ REM ================== END CONFIG ==================
 
 REM Use UTF-8 encoding for output, if needed
 chcp 65001 >nul
-setlocal EnableExtensions EnableDelayedExpansion
+REM After variables are set, so we can use ^! to escape ! and can use ! in password. Before export.
+setlocal EnableDelayedExpansion
+
 
 REM ================== RESOLVE TOOL PATHS (SQLBIN-aware) ==================
 REM Normalize SQLBIN (ensure trailing backslash) and build full executable paths.
@@ -797,4 +800,5 @@ if %LOGSIZE% GTR 0 (
 )
 
 :end
+endlocal
 endlocal
