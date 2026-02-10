@@ -459,9 +459,9 @@ if "%STRUCTURE_ONLY%"=="1" (
     )
 
     REM Add schema-only options to mysqldump
-    set "COMMON_OPTS=%COMMON_OPTS% --no-data"
+    set "COMMON_OPTS=!COMMON_OPTS! --no-data"
     if "%HAS_OPT_SKIP_ADD_DROP_TABLE%"=="1" (
-        set "COMMON_OPTS=%COMMON_OPTS% --skip-add-drop-table"
+        set "COMMON_OPTS=!COMMON_OPTS! --skip-add-drop-table"
     )
 
     REM When schema-only is requested, post-processor should also strip remaining DROP* statements
@@ -799,8 +799,10 @@ REM or appends ".ddl.sql" if there is no ".sql" extension.
 setlocal EnableDelayedExpansion
 set "VARNAME=%~1"
 for %%A in ("!%VARNAME%!") do set "VAL=%%~A"
-REM Normalize: if ends with .sql -> replace; else append .ddl.sql
-if /I "!VAL:~-4!"==".sql" (
+REM Normalize: if ends with .ddl.sql -> keep; else if ends with .sql -> replace; else append .ddl.sql
+if /I "!VAL:~-8!"==".ddl.sql" (
+    REM already ok
+) else if /I "!VAL:~-4!"==".sql" (
     set "VAL=!VAL:~0,-4!.ddl.sql"
 ) else (
     set "VAL=!VAL!.ddl.sql"
@@ -826,7 +828,7 @@ if "%STRUCTURE_ONLY%"=="1" (
 
 
 echo --- Dumping database '%DBNAME%' to '%TARGET%'...
-REM Use --result-file to overwrite output (avoid duplicated headers on repeated runs) while keeping stderr in the log.
+REM Dump directly into the target file (overwrites), while keeping stderr in log.
 "%SQLDUMP_EXE%" %DUMP_AUTH_OPTS% %COMMON_OPTS% --databases "%DBNAME%" --result-file="%TARGET%" 2>> "%LOG%"
 REM Alternative to the more straightforward command above.
 REM "%SQLDUMP_EXE%" %DUMP_AUTH_OPTS% %COMMON_OPTS% "%DBNAME%" 1>> "%TARGET%" 2>> "%LOG%"
