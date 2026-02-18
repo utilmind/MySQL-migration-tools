@@ -724,9 +724,21 @@ git_push_ddl_dump() {
     # We prefer rebase to avoid merge commits in an automated repo.
     git fetch "$remoteName" >/dev/null 2>&1 || true
 
-    # Ensure upstream is set (first run)
+    # Ensure local branch exists and switch to it
+    if git show-ref --verify --quiet "refs/heads/$gitBranchName"; then
+        git checkout "$gitBranchName" >/dev/null 2>&1
+    else
+        # Try to base it on remote branch if it exists, otherwise create empty branch
+        if git show-ref --verify --quiet "refs/remotes/$remoteName/$gitBranchName"; then
+            git checkout -b "$gitBranchName" "$remoteName/$gitBranchName" >/dev/null 2>&1
+        else
+            git checkout -b "$gitBranchName" >/dev/null 2>&1
+        fi
+    fi
+
+    # Ensure upstream is set
     git rev-parse --abbrev-ref --symbolic-full-name "@{u}" >/dev/null 2>&1 || \
-          git branch --set-upstream-to="$remoteName/$gitBranchName" "$gitBranchName" >/dev/null 2>&1 || true
+        git branch --set-upstream-to="$remoteName/$gitBranchName" "$gitBranchName" >/dev/null 2>&1 || true
 
     # Rebase onto remote branch (fast-forward if possible)
     git pull --rebase "$remoteName" "$gitBranchName"
