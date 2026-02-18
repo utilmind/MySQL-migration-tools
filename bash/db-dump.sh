@@ -674,6 +674,91 @@ fi
 
 # ------ OPTIONAL: PUSH DDL DUMP TO GIT, if --ddl-push option is used ------
 if [ "$ddl_push" -eq 1 ]; then
+
+# ---------------- GIT HELPERS (for --ddl-push) ----------------
+require_var() {
+  # Usage: require_var VAR_NAME "human description"
+  local var_name="$1"
+  local desc="$2"
+  if [ -z "${!var_name:-}" ]; then
+    echo "[ERROR] Missing required config: ${var_name} (${desc})" >&2
+    return 1
+  fi
+}
+
+git_push_ddl_dump() {
+  # Usage: git_push_ddl_dump /abs/path/to/file.ddl.sql
+  local srcAbs="$1"
+
+  command -v git >/dev/null 2>&1 || { echo "[ERROR] git is not installed or not in PATH" >&2; return 1; }
+  [ -f "$srcAbs" ] || { echo "[ERROR] DDL file not found: $srcAbs" >&2; return 1; }
+
+  # Expect these variables from credentials:
+  #   gitRepoPath (required) - local cloned repo path
+  #   gitBranchName (required)
+  #   gitRemoteName (optional, default origin)
+  #   gitDdlPath (optional, default: ddl/<basename of src>)
+  #   gitCommitUsername / gitCommitEmail (optional)
+  require_var gitRepoPath "path to local cloned repository" || return 1
+  require_var gitBranchName "git branch to push" || return 1
+
+  local remoteName="${gitRemoteName:-origin}"
+
+  # Default path inside repo: ddl/<filename>
+  local srcBase
+  srcBase="$(basename "$srcAbs")"
+  local ddlPath="${gitDdlPath:-ddl/${srcBase}}"
+
+  # Validate repo
+  [ -d "$gitRepoPath/.git" ] || { echo "[ERROR] gitRepoPath is not a git repo: $gitRepoPath" >&2; return 1; }
+
+  (
+    set -e
+    cd "$gitRepoPath"
+
+    # Enforce remote URL (useful when ssh host alias is required). Only if gitRemoteUrl specified in configuration.
+    if [ -n "${gitRemoteUrl:-}" ]; then
+      git remote set-url "$remoteName" "$gitRemoteUrl"
+    fi
+
+    # Ensure we are on correct branch
+    git fetch "$remoteName" >/dev/null 2>&1 || true
+    git checkout "$gitBranchName" >/dev/null 2>&1 || git checkout -b "$gitBranchName"
+
+    # Make sure destination dir exists
+    mkdir -p "$(dirname "$ddlPath")"
+
+    # Copy dump into repo
+    cp -f "$srcAbs" "$ddlPath"
+
+    # Stage
+    git add "$ddlPath"
+
+    # If no changes staged — do nothing
+    if git diff --cached --quiet -- "$ddlPath"; then
+      echo "[INFO] No DDL changes detected. Nothing to commit/push."
+      exit 0
+    fi
+
+    # Set author if provided (optional)
+    if [ -n "${gitCommitUsername:-}" ]; then
+      git config user.name "$gitCommitUsername"
+    fi
+    if [ -n "${gitCommitEmail:-}" ]; then
+      git config user.email "$gitCommitEmail"
+    fi
+
+    # Commit + push
+    local msg
+    msg="Update DB DDL: $(date -u +'%Y-%m-%d %H:%M:%SZ')"
+    git commit -m "$msg" -- "$ddlPath"
+
+    git push "$remoteName" "$gitBranchName"
+
+    echo "[OK] DDL committed and pushed: $ddlPath"
+  )
+}
+
     # Need the uncompressed SQL file to commit. So we will also skip archiving below.
     srcAbs="$(readlink -f "$targetFilename")"
     log_info "--ddl-push is enabled. Preparing to commit/push '$srcAbs' ..."
