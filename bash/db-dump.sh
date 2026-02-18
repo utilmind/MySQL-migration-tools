@@ -191,7 +191,7 @@ Options:
     --skip-optimize
         Do not run optimize-tables.sh before dumping (skip MyISAM OPTIMIZE / InnoDB ANALYZE).
 
-Arguments:
+Arguments: (POSITIONED)
     dump-name.sql (Required)
         The exported filename can automatically contain current date.
         If filename contains '@', it will be replaced with current date YYYYMMDD.
