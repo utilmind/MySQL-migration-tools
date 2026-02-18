@@ -689,13 +689,33 @@ def process_dump_stream(
                     # To keep output stable, we "re-attach" a single leading semicolon from the
                     # tail back to the unwrapped inner statement.
                     if tail.startswith(";"):
+                        # mysqldump often puts the terminator semicolon after the closing '*/' of
+                        # a versioned comment, e.g. "/*!50001 CREATE VIEW ... */;".
+                        #
+                        # When we unwrap the comment, that semicolon becomes part of `tail`.
+                        # A naive `inner + ";"` can accidentally create a standalone ';' line when
+                        # `inner` ends with a newline. To keep output deterministic and idempotent,
+                        # we attach exactly one leading ';' to the end of the last non-whitespace
+                        # character in `inner`, preserving trailing whitespace/newlines.
+                        def _attach_leading_semicolon(inner_sql: str) -> str:
+                            # Preserve trailing whitespace/newlines exactly as-is.
+                            m_ws = re.search(r"(\s*)\Z", inner_sql)
+                            trailing_ws = m_ws.group(1) if m_ws else ""
+                            body = inner_sql[: len(inner_sql) - len(trailing_ws)] if trailing_ws else inner_sql
+
+                            # If the body already ends with ';', return unchanged.
+                            if body.rstrip().endswith(";"):
+                                return inner_sql
+
+                            return body + ";" + trailing_ws
+
                         if inner.rstrip().endswith(";"):
                             # Inner already ends with a semicolon; just drop one from the tail.
                             tail = tail[1:]
                             write_out(inner)
                         else:
-                            # Move one semicolon from tail to the end of inner.
-                            write_out(inner + ";")
+                            # Move one semicolon from tail into the inner statement in a safe way.
+                            write_out(_attach_leading_semicolon(inner))
                             tail = tail[1:]
                     else:
                         write_out(inner)
