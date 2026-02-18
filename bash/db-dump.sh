@@ -181,15 +181,22 @@ Usage:
     $scriptName [--no-data or --ddl] [--ddl-push] [--skip-optimize] dump-name.sql [configuration-name] ["table1 table2 ..."]
 
 Options:
-    --no-data OR --ddl (if you prefer .ddl.sql extensions)
+    --no-data
         Dump only database structure (no table rows). Additionally, all DROP*
         statements (DROP TABLE / DROP VIEW / DROP TRIGGER / etc.) will be
         removed from the final SQL file to make the schema safer for analysis
         tools and AI without exposing real data.
-        --ddl it is a synonym for --no-data. If --ddl is used, produced file has .ddl.sql extension.
+
+    --ddl
+        Same as --no-data, but also enables "reproducible DDL" post-processing:
+          * sets all AUTO_INCREMENT values to 0
+          * removes the mysqldump completion timestamp ("-- Dump completed on ...")
+        This keeps schema dumps stable for Git diffs. The output file name
+        will use the .ddl.sql extension.
 
     --ddl-push
-        TODO: describe this option.
+        Same as --ddl, and then commit/push the produced .ddl.sql file to a Git repo
+        (requires Git settings in credentials: gitRepoPath, gitBranchName, etc.).
 
     --skip-optimize
         Do not run optimize-tables.sh before dumping (skip MyISAM OPTIMIZE / InnoDB ANALYZE).
@@ -426,6 +433,14 @@ if [ "$structure_only" -eq 1 ]; then
     noDropPyOption="--no-drop";
 fi
 
+# If user explicitly requested --ddl/--ddl-push (not just --no-data),
+# enable deterministic DDL post-processing to avoid noisy Git diffs.
+# This is handled by post-process-dump.py via its --ddl flag.
+ddlSanitizePyOption="";
+if [ "$ddl_mode" -eq 1 ]; then
+    ddlSanitizePyOption="--ddl";
+fi
+
 
 # --------- OPTIONAL TABLE OPTIMIZATION / ANALYZE (if not skipped with --skip-optimize) ---------
 
@@ -585,6 +600,7 @@ if [ -f "$postProcessor" ]; then
         python3 "$postProcessor" \
             --db-name "$dbName" \
             ${noDropPyOption:+$noDropPyOption} \
+            ${ddlSanitizePyOption:+$ddlSanitizePyOption} \
             "$targetFilename" \
             "$tmpProcessed" \
             "$tablesMetaFilename"

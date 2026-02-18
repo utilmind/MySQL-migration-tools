@@ -270,6 +270,42 @@ def replace_utc_time_zone(text):
     return TIME_ZONE_UTC_RE.sub(r"\1'+00:00'\3", text)
 
 
+# --- DDL reproducibility helpers ---------------------------------------------
+#
+# When generating schema-only ("DDL") dumps for version control, we want the output
+# to be stable if the real schema did not change. Unfortunately, mysqldump embeds
+# a few volatile pieces of information:
+#   * AUTO_INCREMENT=<current value> in CREATE TABLE options
+#   * a trailing comment like: "-- Dump completed on YYYY-MM-DD HH:MM:SS"
+#
+# The helpers below normalize those volatile pieces so that repeated dumps produce
+# identical output and Git diffs show only real DDL changes.
+
+# Normalize AUTO_INCREMENT to a deterministic value (0) for diff-friendly DDL.
+AUTO_INCREMENT_RE = re.compile(r"\bAUTO_INCREMENT=\d+\b", re.IGNORECASE)
+
+# Normalize the trailing completion comment emitted by mysqldump.
+DUMP_COMPLETED_ON_RE = re.compile(r"(?m)^--\s+Dump\s+completed\s+on\s+.*$")
+
+def sanitize_ddl_for_reproducibility(text):
+    """
+    Normalize volatile parts of a schema-only dump so Git diffs are meaningful.
+
+    Rules:
+      - Replace any 'AUTO_INCREMENT=<number>' with 'AUTO_INCREMENT=0'
+      - Replace '-- Dump completed on <timestamp>' with '-- Dump completed'
+
+    Note: This function is intended for schema-only dumps. It is NOT enabled by
+    default for full data dumps, because altering comment lines in data dumps can
+    make debugging harder (even though it is generally safe).
+    """
+    if not text:
+        return text
+    text = AUTO_INCREMENT_RE.sub("AUTO_INCREMENT=0", text)
+    text = DUMP_COMPLETED_ON_RE.sub("-- Dump completed", text)
+    return text
+
+
 def enhance_create_table(text, state, table_meta, default_schema):
     """
     Enhance CREATE TABLE statements in the given text chunk using table_meta.
@@ -467,6 +503,7 @@ def process_dump_stream(
     db_name=None,
     no_drop=False,
     prepend_file=None,
+    ddl=False,
 ):
     """
     Stream-process input dump:
@@ -478,6 +515,7 @@ def process_dump_stream(
     - if version < threshold: unwrap (emit only inner content)
     - else: keep the whole comment as-is
     - optionally enhance CREATE TABLE statements using table_meta
+    - optionally sanitize volatile DDL parts (AUTO_INCREMENT, completion timestamp) when ddl is True
     - optionally strip DROP* statements when no_drop is True
     - write everything to out_path
     - print progress to stderr
@@ -504,12 +542,18 @@ def process_dump_stream(
 
     def write_out(chunk):
         """Write chunk to fout, optionally enhancing CREATE TABLE,
-        normalizing time_zone and, if requested, stripping DROP* statements."""
+        normalizing time_zone, optionally sanitizing DDL for reproducibility,
+        and, if requested, stripping DROP* statements."""
         if not chunk:
             return
         enhanced = enhance_create_table(chunk, create_state, table_meta, default_schema)
         # Normalize SET time_zone = 'UTC' to SET time_zone = '+00:00'
         enhanced = replace_utc_time_zone(enhanced)
+
+        # If --ddl is enabled, normalize volatile DDL parts like AUTO_INCREMENT values
+        # and mysqldump completion timestamps to keep schema dumps deterministic.
+        if ddl:
+            enhanced = sanitize_ddl_for_reproducibility(enhanced)
 
         if no_drop:
             # Split into lines (keeping line endings) and drop any line whose first
@@ -681,6 +725,16 @@ def main():
         ),
     )
     parser.add_argument(
+        "--ddl",
+        action="store_true",
+        dest="ddl",
+        help=(
+            "Enable DDL reproducibility mode: set all AUTO_INCREMENT values to 0 "
+            "and remove mysqldump completion timestamps (e.g. '-- Dump completed on ...'). "
+            "Intended for schema-only dumps committed to version control."
+        ),
+    )
+    parser.add_argument(
         "--prepend-file",
         dest="prepend_file",
         help=(
@@ -714,6 +768,7 @@ def main():
     db_name = args.db_name
     no_drop = bool(args.no_drop)
     prepend_file = args.prepend_file
+    ddl = bool(getattr(args, 'ddl', False))
 
     if not out_path:
         print(
@@ -784,6 +839,7 @@ def main():
         db_name=db_name,
         no_drop=no_drop,
         prepend_file=prepend_file,
+        ddl=ddl,
     )
 
 
