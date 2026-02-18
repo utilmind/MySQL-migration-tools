@@ -681,8 +681,24 @@ def process_dump_stream(
 
                 # Decide whether to unwrap or keep the comment
                 if version < version_threshold:
-                    # Unwrap: emit only the inner content
-                    write_out(inner)
+                    # Unwrap: emit only the inner content.
+                    #
+                    # Important: mysqldump often places the terminating semicolon *after* the
+                    # versioned comment, e.g. "/*!50001 VIEW ... */;". When we unwrap, that
+                    # semicolon becomes a standalone line in the output, which creates noisy diffs.
+                    # To keep output stable, we "re-attach" a single leading semicolon from the
+                    # tail back to the unwrapped inner statement.
+                    if tail.startswith(";"):
+                        if inner.rstrip().endswith(";"):
+                            # Inner already ends with a semicolon; just drop one from the tail.
+                            tail = tail[1:]
+                            write_out(inner)
+                        else:
+                            # Move one semicolon from tail to the end of inner.
+                            write_out(inner + ";")
+                            tail = tail[1:]
+                    else:
+                        write_out(inner)
                 else:
                     # Keep the whole comment block as-is
                     write_out(comment[:end_pos + 2])
