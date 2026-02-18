@@ -3,7 +3,6 @@
 #  Database Dump Utility (db-dump.sh)
 #
 #  Part of: MySQL Migration Tools
-#  Copyright (c) 2025 utilmind
 #  https://github.com/utilmind/MySQL-migration-tools
 #
 #  Description:
@@ -22,20 +21,21 @@
 #        disabled with --skip-optimize).
 #
 #  Usage:
-#      ./db-dump.sh [--no-data or --ddl] [--skip-optimize] dump-name.sql [configuration-name] ["table1 table2 ..."]
+#      ./db-dump.sh [--ddl / -ddl-push] [--skip-optimize] dump-name.sql [configuration-name] ["table1 table2 ..."]
 #
 #  License: MIT
-#  (c) utilmind, 2012-2025
-#    15.10.2024: Each dump have date, don't overwrite past days backups. Old backups can be deleted by garbage collector.
-#    26.08.2025: Multiple table prefixes.
-#    15.11.2025: Request password if not specified in configuration;
+#  (c) utilmind, 2012-2026
+#    2025-10-15: Each dump have date, don't overwrite past days backups. Old backups can be deleted by garbage collector.
+#    2025-08-26: Multiple table prefixes.
+#    2025-11-15: Request password if not specified in configuration;
 #                Process dump to remove MySQL compatibility comments
 #                + provide missing details (server defaults) to the 'CREATE TABLE' statements
 #                  (to solve issues with collations on import).
 #                (These features require Python3+ installed.)
-#    17.11.2025: If dbTablePrefix is not defined and no explicit table list is
+#    2025-11-17: If dbTablePrefix is not defined and no explicit table list is
 #                provided, export all tables from the database (except *_backup_*).
 #                Implement RAR-or-gzip archiving with rotation of previous archives.
+#    2026-02-18: Added support for DDL dumps with pushing DDLs to git repo.
 ###############################################################################
 set -euo pipefail
 
@@ -178,7 +178,7 @@ print_help() {
   scriptName=$(basename "$0")
   cat << EOF
 Usage:
-    $scriptName [--ddl] [--skip-optimize] dump-name.sql [configuration-name] ["table1 table2 ..."]
+    $scriptName [--no-data or --ddl] [--ddl-push] [--skip-optimize] dump-name.sql [configuration-name] ["table1 table2 ..."]
 
 Options:
     --no-data OR --ddl (if you prefer .ddl.sql extensions)
@@ -187,6 +187,9 @@ Options:
         removed from the final SQL file to make the schema safer for analysis
         tools and AI without exposing real data.
         --ddl it is a synonym for --no-data. If --ddl is used, produced file has .ddl.sql extension.
+
+    --ddl-push
+        TODO: describe this option.
 
     --skip-optimize
         Do not run optimize-tables.sh before dumping (skip MyISAM OPTIMIZE / InnoDB ANALYZE).
@@ -246,6 +249,7 @@ fi
 run_optimize=1
 structure_only=0   # when 1, dump only schema (no table rows, no DROP statements)
 ddl_mode=0         # when 1, the user explicitly requested --ddl (pretty extension .ddl.sql)
+ddl_push=0         # when 1, do schema-only dump and push it to git
 
 positional=()  # used to collect positional options (w/o --)
 
@@ -266,6 +270,12 @@ while [ $# -gt 0 ]; do
         --ddl)
             structure_only=1
             ddl_mode=1
+            shift
+            ;;
+        --ddl-push)
+            structure_only=1
+            ddl_mode=1
+            ddl_push=1
             shift
             ;;
         --)
@@ -329,13 +339,13 @@ allTablesFilename="$tempDir/_${dbConfigName}-export_tables.txt"
 tablesMetaFilename="$tempDir/_${dbConfigName}-tables_meta.tsv"
 
 current_date=$(date +"%Y%m%d")
-targetFilename=$(echo "$dumpTemplate" | sed "s/@/${current_date}/g")
+targetFilename=$(echo \"$dumpTemplate\" | sed \"s/@/${current_date}/g\")
 
 # If user used --ddl (not just --no-data), prefer *.ddl.sql extension for clarity.
-if [ "$ddl_mode" -eq 1 ]; then
-    case "$targetFilename" in
+if [ \"$ddl_mode\" -eq 1 ]; then
+    case \"$targetFilename\" in
         *.ddl.sql) : ;;                 # already good
-        *.sql) targetFilename="${targetFilename%.sql}.ddl.sql" ;;
+        *.sql) targetFilename=\"${targetFilename%.sql}.ddl.sql\" ;;
         *) : ;;                         # user provided a non-.sql name; keep as-is
     esac
 fi
@@ -662,48 +672,64 @@ if [ "$need_fallback_use_header" -eq 1 ]; then
 fi
 
 
+# ------ OPTIONAL: PUSH DDL DUMP TO GIT, if --ddl-push option is used ------
+if [ "$ddl_push" -eq 1 ]; then
+    # Need the uncompressed SQL file to commit. So we will also skip archiving below.
+    srcAbs="$(readlink -f "$targetFilename")"
+    log_info "--ddl-push is enabled. Preparing to commit/push '$srcAbs' ..."
+    git_push_ddl_dump "$srcAbs"
+fi
+
+
 # -------------- ARCHIVE MAINTENANCE ---------------
 
-# Check if RAR available
-if command -v rar >/dev/null 2>&1; then
-    # Use RAR with rotation
-    archiveFile="${targetFilename}.rar"
-    archivePrev="${targetFilename}.previous.rar"
-
-    if [ -f "$archiveFile" ]; then
-        log_info "Rotating to '$archivePrev' ..."
-        mv -f "$archiveFile" "$archivePrev"
-    fi
-
-    log_info "Archiving dump as '$archiveFile' ..."
-    # -m5 = best compression, -ep = do not store paths
-    # -df = delete SQL file. Remove that option if you want to keep SQL file after archivation.
-    rar a -m5 -ep -df "$archiveFile" "$targetFilename"
-
+# If --ddl-push was used, keep the SQL file as-is (do not archive/delete it),
+# because the git step needs the plain *.ddl.sql file.
+if [ "$ddl_push" -eq 1 ]; then
+    archiveFile="$targetFilename"
+    log_info "Skipping archiving because --ddl-push is enabled."
 else
-    # Fallback: first try gzip, if no gzip either — leave just regular SQL dump.
-    if command -v gzip >/dev/null 2>&1; then
-        # plain gzip with rotation (btw no TAR needed, since this is single SQL file)
-        archiveFile="${targetFilename}.gz"
-        archivePrev="${targetFilename}.previous.gz"
+    # Check if RAR available
+    if command -v rar >/dev/null 2>&1; then
+        # Use RAR with rotation
+        archiveFile="${targetFilename}.rar"
+        archivePrev="${targetFilename}.previous.rar"
 
         if [ -f "$archiveFile" ]; then
             log_info "Rotating to '$archivePrev' ..."
             mv -f "$archiveFile" "$archivePrev"
         fi
 
-        # compression level 9 (best)
-        if ! gzip -9 -c "$targetFilename" > "$archiveFile"; then
-            log_warn "gzip compression failed; leaving original dump '$targetFilename' uncompressed."
-            rm -f "$archiveFile" 2>/dev/null || true
-            archiveFile="$targetFilename"
-        else
-            # Compression successful. Delete source .sql
-            rm -f "$targetFilename"
-        fi
+        log_info "Archiving dump as '$archiveFile' ..."
+        # -m5 = best compression, -ep = do not store paths
+        # -df = delete SQL file. Remove that option if you want to keep SQL file after archivation.
+        rar a -m5 -ep -df "$archiveFile" "$targetFilename"
+
     else
-        log_warn "'rar' and 'gzip' are not available. Dump will remain uncompressed."
-        archiveFile="$targetFilename"
+        # Fallback: first try gzip, if no gzip either — leave just regular SQL dump.
+        if command -v gzip >/dev/null 2>&1; then
+            # plain gzip with rotation (btw no TAR needed, since this is single SQL file)
+            archiveFile="${targetFilename}.gz"
+            archivePrev="${targetFilename}.previous.gz"
+
+            if [ -f "$archiveFile" ]; then
+                log_info "Rotating to '$archivePrev' ..."
+                mv -f "$archiveFile" "$archivePrev"
+            fi
+
+            # compression level 9 (best)
+            if ! gzip -9 -c "$targetFilename" > "$archiveFile"; then
+                log_warn "gzip compression failed; leaving original dump '$targetFilename' uncompressed."
+                rm -f "$archiveFile" 2>/dev/null || true
+                archiveFile="$targetFilename"
+            else
+                # Compression successful. Delete source .sql
+                rm -f "$targetFilename"
+            fi
+        else
+            log_warn "'rar' and 'gzip' are not available. Dump will remain uncompressed."
+            archiveFile="$targetFilename"
+        fi
     fi
 fi
 
