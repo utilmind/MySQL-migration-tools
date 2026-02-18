@@ -704,11 +704,6 @@ git_push_ddl_dump() {
 
   local remoteName="${gitRemoteName:-origin}"
 
-  # Default path inside repo: ddl/<filename>
-  local srcBase
-  srcBase="$(basename "$srcAbs")"
-  local ddlPath="${gitDdlPath:-ddl/${srcBase}}"
-
   # Validate repo
   [ -d "$gitRepoPath/.git" ] || { echo "[ERROR] gitRepoPath is not a git repo: $gitRepoPath" >&2; return 1; }
 
@@ -716,20 +711,47 @@ git_push_ddl_dump() {
     set -e
     cd "$gitRepoPath"
 
+    # Prevent concurrent runs (cron/manual) from racing
+    exec 9>"$gitRepoPath/.ddl-push.lock"
+    flock -n 9 || { echo "[INFO] Another ddl-push is running, exiting."; exit 0; }
+
     # Enforce remote URL (useful when ssh host alias is required). Only if gitRemoteUrl specified in configuration.
     if [ -n "${gitRemoteUrl:-}" ]; then
       git remote set-url "$remoteName" "$gitRemoteUrl"
     fi
 
-    # Ensure we are on correct branch
+    # Sync with remote before modifying files to avoid non-fast-forward.
+    # We prefer rebase to avoid merge commits in an automated repo.
     git fetch "$remoteName" >/dev/null 2>&1 || true
+
+    # Ensure upstream is set (first run)
+    git rev-parse --abbrev-ref --symbolic-full-name "@{u}" >/dev/null 2>&1 || \
+          git branch --set-upstream-to="$remoteName/$gitBranchName" "$gitBranchName" >/dev/null 2>&1 || true
+
+    # Rebase onto remote branch (fast-forward if possible)
+    git pull --rebase "$remoteName" "$gitBranchName"
+
     git checkout "$gitBranchName" >/dev/null 2>&1 || git checkout -b "$gitBranchName"
 
-    # Make sure destination dir exists
-    mkdir -p "$(dirname "$ddlPath")"
+    local ddlPath
 
-    # Copy dump into repo
-    cp -f "$srcAbs" "$ddlPath"
+    if [ -n "${gitDdlPath:-}" ]; then
+      # Explicit path inside repo: copy туда
+      ddlPath="$gitDdlPath"
+      mkdir -p "$(dirname "$ddlPath")"
+      cp -f "$srcAbs" "$ddlPath"
+    else
+      # Default: НЕ копировать. Файл должен уже находиться внутри gitRepoPath.
+      # Превращаем абсолютный путь в относительный для репозитория.
+      if [[ "$srcAbs" != "$gitRepoPath/"* ]]; then
+        echo "[ERROR] DDL file is outside gitRepoPath, so I won't copy it by default." >&2
+        echo "[ERROR] Either place the DDL output inside '$gitRepoPath' or set gitDdlPath to enable copying." >&2
+        echo "[ERROR] srcAbs=$srcAbs" >&2
+        echo "[ERROR] gitRepoPath=$gitRepoPath" >&2
+        exit 1
+      fi
+      ddlPath="${srcAbs#$gitRepoPath/}"
+    fi
 
     # Stage
     git add "$ddlPath"
@@ -753,7 +775,12 @@ git_push_ddl_dump() {
     msg="Update DB DDL: $(date -u +'%Y-%m-%d %H:%M:%SZ')"
     git commit -m "$msg" -- "$ddlPath"
 
-    git push "$remoteName" "$gitBranchName"
+    # Push with one retry in case remote advanced between our pull and push
+    if ! git push "$remoteName" "$gitBranchName"; then
+      echo "[WARN] Push rejected (non-fast-forward). Rebasing and retrying once..."
+      git pull --rebase "$remoteName" "$gitBranchName"
+      git push "$remoteName" "$gitBranchName"
+    fi
 
     echo "[OK] DDL committed and pushed: $ddlPath"
   )
