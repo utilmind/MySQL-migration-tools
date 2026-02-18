@@ -109,7 +109,7 @@ fi
 # (Because MariaDB doesn't have the column statistics and this option is enabled by default in MySQL 8+.)
 # So... first check whether this option is supported by `mysqldump` and if yes, try to disable column stats.
 if has_mysqldump_opt '--column-statistics'; then
-  COMMON_OPTS+=( --column-statistics=0 )
+    COMMON_OPTS+=( --column-statistics=0 )
 fi
 
 # ===== Optional, uncomment/remove as needed =====
@@ -175,8 +175,8 @@ log_ok()    { printf "%b[OK]%b %s\n"    "$COLOR_OK" "$COLOR_RESET" "$*"; }
 # FUNCTIONS
 # ------------
 print_help() {
-  scriptName=$(basename "$0")
-  cat << EOF
+    scriptName=$(basename "$0")
+    cat << EOF
 Usage:
     $scriptName [--no-data or --ddl] [--ddl-push] [--skip-optimize] dump-name.sql [configuration-name] ["table1 table2 ..."]
 
@@ -622,10 +622,10 @@ if [ "$need_fallback_use_header" -eq 1 ]; then
     #
     tmpWithUse="${targetFilename%.sql}.with_use.sql"
     {
-      printf '%s\n\nUSE `%s`;\n\n' \
-        '-- Dump created with DB migration tools ( https://github.com/utilmind/MySQL-migration-tools )' \
-        "$dbName"
-      cat "$targetFilename"
+        printf '%s\n\nUSE `%s`;\n\n' \
+            '-- Dump created with DB migration tools ( https://github.com/utilmind/MySQL-migration-tools )' \
+            "$dbName"
+        cat "$targetFilename"
     } > "$tmpWithUse"
     mv "$tmpWithUse" "$targetFilename"
 
@@ -675,155 +675,157 @@ fi
 # ------ OPTIONAL: PUSH DDL DUMP TO GIT, if --ddl-push option is used ------
 if [ "$ddl_push" -eq 1 ]; then
 
-# ---------------- GIT HELPERS (for --ddl-push) ----------------
-require_var() {
-  # Usage: require_var VAR_NAME "human description"
-  local var_name="$1"
-  local desc="$2"
-  if [ -z "${!var_name:-}" ]; then
-    echo "[ERROR] Missing required config: ${var_name} (${desc})" >&2
-    return 1
-  fi
-}
-
-git_push_ddl_dump() {
-  # Usage: git_push_ddl_dump /abs/path/to/file.ddl.sql
-  local srcAbs="$1"
-
-  command -v git >/dev/null 2>&1 || { echo "[ERROR] git is not installed or not in PATH" >&2; return 1; }
-  [ -f "$srcAbs" ] || { echo "[ERROR] DDL file not found: $srcAbs" >&2; return 1; }
-
-  # Expect these variables from credentials:
-  #   gitRepoPath (required) - local cloned repo path
-  #   gitBranchName (required)
-  #   gitRemoteName (optional, default origin)
-  #   gitDdlPath (optional, default: ddl/<basename of src>)
-  #   gitCommitUsername / gitCommitEmail (optional)
-  require_var gitRepoPath "path to local cloned repository" || return 1
-  require_var gitBranchName "git branch to push" || return 1
-
-  local remoteName="${gitRemoteName:-origin}"
-
-  # Validate repo
-  [ -d "$gitRepoPath/.git" ] || { echo "[ERROR] gitRepoPath is not a git repo: $gitRepoPath" >&2; return 1; }
-
-  (
-    set -e
-    cd "$gitRepoPath"
-
-
-    # Prevent concurrent runs (cron/manual) from racing
-    lockFile="/tmp/ddl-push-$(basename "$gitRepoPath").lock"
-    exec 9>"$lockFile"
-    flock -n 9 || { echo "[INFO] Another ddl-push is running, exiting."; exit 0; }
-
-    # Enforce remote URL (useful when ssh host alias is required). Only if gitRemoteUrl specified in configuration.
-    if [ -n "${gitRemoteUrl:-}" ]; then
-        git remote set-url "$remoteName" "$gitRemoteUrl"
-    fi
-
-
-    # ---- Self-heal if repo has local changes (e.g. from interrupted previous run) ----
-    # Save the freshly generated DDL aside into system temp, reset repo to remote, then restore the DDL.
-    tmpDdl=""
-
-    if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
-        echo "[WARN] Repo has local changes. Will reset hard and retry in a clean state."
-
-        tmpDdl="$(mktemp -t ddl-push-XXXXXXXX.sql)"
-        cp -f "$srcAbs" "$tmpDdl"
-
-        git fetch "$remoteName" >/dev/null 2>&1 || true
-
-        if git show-ref --verify --quiet "refs/remotes/$remoteName/$gitBranchName"; then
-            git reset --hard "$remoteName/$gitBranchName"
-        else
-            git reset --hard
+    # ---------------- GIT HELPERS (for --ddl-push) ----------------
+    require_var() {
+        # Usage: require_var VAR_NAME "human description"
+        local var_name="$1"
+        local desc="$2"
+        if [ -z "${!var_name:-}" ]; then
+            echo "[ERROR] Missing required config: ${var_name} (${desc})" >&2
+            return 1
         fi
+    }
 
-        git clean -fd
+    git_push_ddl_dump() {
+        # Usage: git_push_ddl_dump /abs/path/to/file.ddl.sql
+        local srcAbs="$1"
 
-        cp -f "$tmpDdl" "$srcAbs"
-        rm -f "$tmpDdl" || true
-    fi
+        command -v git >/dev/null 2>&1 || { echo "[ERROR] git is not installed or not in PATH" >&2; return 1; }
+        [ -f "$srcAbs" ] || { echo "[ERROR] DDL file not found: $srcAbs" >&2; return 1; }
 
+        # Expect these variables from credentials:
+        #   gitRepoPath (required) - local cloned repo path
+        #   gitBranchName (required)
+        #   gitRemoteName (optional, default origin)
+        #   gitDdlPath (optional, default: ddl/<basename of src>)
+        #   gitCommitUsername / gitCommitEmail (optional)
+        require_var gitRepoPath "path to local cloned repository" || return 1
+        require_var gitBranchName "git branch to push" || return 1
 
-    # Sync with remote before modifying files to avoid non-fast-forward.
-    # We prefer rebase to avoid merge commits in an automated repo.
-    git fetch "$remoteName" >/dev/null 2>&1 || true
+        local remoteName="${gitRemoteName:-origin}"
 
-    # Ensure local branch exists and switch to it
-    if git show-ref --verify --quiet "refs/heads/$gitBranchName"; then
-        git checkout "$gitBranchName" >/dev/null 2>&1
-    else
-        # Try to base it on remote branch if it exists, otherwise create empty branch
-        if git show-ref --verify --quiet "refs/remotes/$remoteName/$gitBranchName"; then
-            git checkout -b "$gitBranchName" "$remoteName/$gitBranchName" >/dev/null 2>&1
-        else
-            git checkout -b "$gitBranchName" >/dev/null 2>&1
-        fi
-    fi
+        # Validate repo
+        [ -d "$gitRepoPath/.git" ] || { echo "[ERROR] gitRepoPath is not a git repo: $gitRepoPath" >&2; return 1; }
 
-    # Ensure upstream is set
-    git rev-parse --abbrev-ref --symbolic-full-name "@{u}" >/dev/null 2>&1 || \
-        git branch --set-upstream-to="$remoteName/$gitBranchName" "$gitBranchName" >/dev/null 2>&1 || true
-
-    # Rebase onto remote branch (fast-forward if possible)
-    git pull --rebase "$remoteName" "$gitBranchName"
+        (
+            set -e
+            cd "$gitRepoPath"
 
 
-    local ddlPath
+            # Prevent concurrent runs (cron/manual) from racing
+            lockFile="/tmp/ddl-push-$(basename "$gitRepoPath").lock"
+            exec 9>"$lockFile"
+            flock -n 9 || { echo "[INFO] Another ddl-push is running, exiting."; exit 0; }
 
-    if [ -n "${gitDdlPath:-}" ]; then
-      # Explicit path inside repo: copy туда
-      ddlPath="$gitDdlPath"
-      mkdir -p "$(dirname "$ddlPath")"
-      cp -f "$srcAbs" "$ddlPath"
-    else
-      # Default: НЕ копировать. Файл должен уже находиться внутри gitRepoPath.
-      # Превращаем абсолютный путь в относительный для репозитория.
-      if [[ "$srcAbs" != "$gitRepoPath/"* ]]; then
-        echo "[ERROR] DDL file is outside gitRepoPath, so I won't copy it by default." >&2
-        echo "[ERROR] Either place the DDL output inside '$gitRepoPath' or set gitDdlPath to enable copying." >&2
-        echo "[ERROR] srcAbs=$srcAbs" >&2
-        echo "[ERROR] gitRepoPath=$gitRepoPath" >&2
-        exit 1
-      fi
-      ddlPath="${srcAbs#$gitRepoPath/}"
-    fi
+            # Enforce remote URL (useful when ssh host alias is required). Only if gitRemoteUrl specified in configuration.
+            if [ -n "${gitRemoteUrl:-}" ]; then
+                git remote set-url "$remoteName" "$gitRemoteUrl"
+            fi
 
-    # Stage
-    git add "$ddlPath"
 
-    # If no changes staged — do nothing
-    if git diff --cached --quiet -- "$ddlPath"; then
-      echo "[INFO] No DDL changes detected. Nothing to commit/push."
-      exit 0
-    fi
+            # Sync with remote before modifying files to avoid non-fast-forward.
+            # We prefer rebase to avoid merge commits in an automated repo.
+            git fetch "$remoteName" >/dev/null 2>&1 || true
 
-    # Set author if provided (optional)
-    if [ -n "${gitCommitUsername:-}" ]; then
-      git config user.name "$gitCommitUsername"
-    fi
-    if [ -n "${gitCommitEmail:-}" ]; then
-      git config user.email "$gitCommitEmail"
-    fi
+            # Ensure local branch exists and switch to it
+            if git show-ref --verify --quiet "refs/heads/$gitBranchName"; then
+                git checkout "$gitBranchName" >/dev/null 2>&1
+            else
+                # Try to base it on remote branch if it exists, otherwise create empty branch
+                if git show-ref --verify --quiet "refs/remotes/$remoteName/$gitBranchName"; then
+                    git checkout -b "$gitBranchName" "$remoteName/$gitBranchName" >/dev/null 2>&1
+                else
+                    git checkout -b "$gitBranchName" >/dev/null 2>&1
+                fi
+            fi
 
-    # Commit + push
-    local msg
-    msg="Update DB DDL: $(date -u +'%Y-%m-%d %H:%M:%SZ')"
-    git commit -m "$msg" -- "$ddlPath"
+            # Ensure upstream is set
+            git rev-parse --abbrev-ref --symbolic-full-name "@{u}" >/dev/null 2>&1 || \
+                git branch --set-upstream-to="$remoteName/$gitBranchName" "$gitBranchName" >/dev/null 2>&1 || true
 
-    # Push with one retry in case remote advanced between our pull and push
-    if ! git push "$remoteName" "$gitBranchName"; then
-        echo "[WARN] Push rejected (non-fast-forward). Rebasing and retrying once..."
-        git pull --rebase "$remoteName" "$gitBranchName"
-        git push "$remoteName" "$gitBranchName"
-    fi
 
-    echo "[OK] DDL committed and pushed: $ddlPath"
-  )
-}
+            # ---- Self-heal if repo has local changes (e.g. from interrupted previous run) ----
+            # If repo is dirty, save our fresh DDL away, hard reset to remote, rebase-pull, then restore DDL.
+            tmpDdl=""
+            needRestore=0
+            if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+                echo "[WARN] Repo has local changes. Will reset hard and retry in a clean state."
+
+                tmpDdl="$(mktemp -t ddl-push-XXXXXXXX.sql)"
+                cp -f "$srcAbs" "$tmpDdl"
+                needRestore=1
+
+                git fetch "$remoteName" >/dev/null 2>&1 || true
+                if git show-ref --verify --quiet "refs/remotes/$remoteName/$gitBranchName"; then
+                    git reset --hard "$remoteName/$gitBranchName"
+                else
+                    git reset --hard
+                fi
+                git clean -fd
+            fi
+
+            # Now sync clean working tree with remote
+            git pull --rebase "$remoteName" "$gitBranchName"
+
+            # Restore DDL (after pull, so pull won't complain about unstaged changes)
+            if [ "$needRestore" -eq 1 ]; then
+                cp -f "$tmpDdl" "$srcAbs"
+                rm -f "$tmpDdl" || true
+            fi
+
+
+            local ddlPath
+
+            if [ -n "${gitDdlPath:-}" ]; then
+                # Explicit path inside repo: copy to specified path
+                ddlPath="$gitDdlPath"
+                mkdir -p "$(dirname "$ddlPath")"
+                cp -f "$srcAbs" "$ddlPath"
+            else
+                # Default: DON'T COPY. File should be in gitRepoPath already.
+                # Convert an absolute path to a repository-relative path.
+                if [[ "$srcAbs" != "$gitRepoPath/"* ]]; then
+                    echo "[ERROR] DDL file is outside gitRepoPath, so I won't copy it by default." >&2
+                    echo "[ERROR] Either place the DDL output inside '$gitRepoPath' or set gitDdlPath to enable copying." >&2
+                    echo "[ERROR] srcAbs=$srcAbs" >&2
+                    echo "[ERROR] gitRepoPath=$gitRepoPath" >&2
+                    exit 1
+                fi
+                ddlPath="${srcAbs#$gitRepoPath/}"
+            fi
+
+            # Stage
+            git add "$ddlPath"
+
+            # If no changes staged — do nothing
+            if git diff --cached --quiet -- "$ddlPath"; then
+                echo "[INFO] No DDL changes detected. Nothing to commit/push."
+                exit 0
+            fi
+
+            # Set author if provided (optional)
+            if [ -n "${gitCommitUsername:-}" ]; then
+                git config user.name "$gitCommitUsername"
+            fi
+            if [ -n "${gitCommitEmail:-}" ]; then
+                git config user.email "$gitCommitEmail"
+            fi
+
+            # Commit + push
+            local msg
+            msg="Update DB DDL: $(date -u +'%Y-%m-%d %H:%M:%SZ')"
+            git commit -m "$msg" -- "$ddlPath"
+
+            # Push with one retry in case remote advanced between our pull and push
+            if ! git push "$remoteName" "$gitBranchName"; then
+                echo "[WARN] Push rejected (non-fast-forward). Rebasing and retrying once..."
+                git pull --rebase "$remoteName" "$gitBranchName"
+                git push "$remoteName" "$gitBranchName"
+            fi
+
+            echo "[OK] DDL committed and pushed: $ddlPath"
+        )
+    }
 
     # Need the uncompressed SQL file to commit. So we will also skip archiving below.
     srcAbs="$(readlink -f "$targetFilename")"
