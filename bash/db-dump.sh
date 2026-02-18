@@ -339,13 +339,13 @@ allTablesFilename="$tempDir/_${dbConfigName}-export_tables.txt"
 tablesMetaFilename="$tempDir/_${dbConfigName}-tables_meta.tsv"
 
 current_date=$(date +"%Y%m%d")
-targetFilename=$(echo \"$dumpTemplate\" | sed \"s/@/${current_date}/g\")
+targetFilename=$(echo "$dumpTemplate" | sed "s/@/${current_date}/g")
 
 # If user used --ddl (not just --no-data), prefer *.ddl.sql extension for clarity.
-if [ \"$ddl_mode\" -eq 1 ]; then
-    case \"$targetFilename\" in
+if [ "$ddl_mode" -eq 1 ]; then
+    case "$targetFilename" in
         *.ddl.sql) : ;;                 # already good
-        *.sql) targetFilename=\"${targetFilename%.sql}.ddl.sql\" ;;
+        *.sql) targetFilename="${targetFilename%.sql}.ddl.sql" ;;
         *) : ;;                         # user provided a non-.sql name; keep as-is
     esac
 fi
