@@ -293,7 +293,7 @@ def sanitize_ddl_for_reproducibility(text):
 
     Rules:
       - Replace any 'AUTO_INCREMENT=<number>' with 'AUTO_INCREMENT=0'
-      - Replace '-- Dump completed on <timestamp>' with '-- Dump completed'
+      - Replace '-- Dump completed on <timestamp>' with '-- Dump completed.'
 
     Note: This function is intended for schema-only dumps. It is NOT enabled by
     default for full data dumps, because altering comment lines in data dumps can
@@ -302,7 +302,7 @@ def sanitize_ddl_for_reproducibility(text):
     if not text:
         return text
     text = AUTO_INCREMENT_RE.sub("AUTO_INCREMENT=0", text)
-    text = DUMP_COMPLETED_ON_RE.sub("-- Dump completed", text)
+    text = DUMP_COMPLETED_ON_RE.sub("-- Dump completed.", text)
     return text
 
 
