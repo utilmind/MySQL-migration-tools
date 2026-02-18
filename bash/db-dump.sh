@@ -711,14 +711,42 @@ git_push_ddl_dump() {
     set -e
     cd "$gitRepoPath"
 
+
     # Prevent concurrent runs (cron/manual) from racing
-    exec 9>"$gitRepoPath/.ddl-push.lock"
+    lockFile="/tmp/ddl-push-$(basename "$gitRepoPath").lock"
+    exec 9>"$lockFile"
     flock -n 9 || { echo "[INFO] Another ddl-push is running, exiting."; exit 0; }
 
     # Enforce remote URL (useful when ssh host alias is required). Only if gitRemoteUrl specified in configuration.
     if [ -n "${gitRemoteUrl:-}" ]; then
-      git remote set-url "$remoteName" "$gitRemoteUrl"
+        git remote set-url "$remoteName" "$gitRemoteUrl"
     fi
+
+
+    # ---- Self-heal if repo has local changes (e.g. from interrupted previous run) ----
+    # Save the freshly generated DDL aside into system temp, reset repo to remote, then restore the DDL.
+    tmpDdl=""
+
+    if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+        echo "[WARN] Repo has local changes. Will reset hard and retry in a clean state."
+
+        tmpDdl="$(mktemp -t ddl-push-XXXXXXXX.sql)"
+        cp -f "$srcAbs" "$tmpDdl"
+
+        git fetch "$remoteName" >/dev/null 2>&1 || true
+
+        if git show-ref --verify --quiet "refs/remotes/$remoteName/$gitBranchName"; then
+            git reset --hard "$remoteName/$gitBranchName"
+        else
+            git reset --hard
+        fi
+
+        git clean -fd
+
+        cp -f "$tmpDdl" "$srcAbs"
+        rm -f "$tmpDdl" || true
+    fi
+
 
     # Sync with remote before modifying files to avoid non-fast-forward.
     # We prefer rebase to avoid merge commits in an automated repo.
@@ -743,7 +771,6 @@ git_push_ddl_dump() {
     # Rebase onto remote branch (fast-forward if possible)
     git pull --rebase "$remoteName" "$gitBranchName"
 
-    git checkout "$gitBranchName" >/dev/null 2>&1 || git checkout -b "$gitBranchName"
 
     local ddlPath
 
@@ -789,9 +816,9 @@ git_push_ddl_dump() {
 
     # Push with one retry in case remote advanced between our pull and push
     if ! git push "$remoteName" "$gitBranchName"; then
-      echo "[WARN] Push rejected (non-fast-forward). Rebasing and retrying once..."
-      git pull --rebase "$remoteName" "$gitBranchName"
-      git push "$remoteName" "$gitBranchName"
+        echo "[WARN] Push rejected (non-fast-forward). Rebasing and retrying once..."
+        git pull --rebase "$remoteName" "$gitBranchName"
+        git push "$remoteName" "$gitBranchName"
     fi
 
     echo "[OK] DDL committed and pushed: $ddlPath"
