@@ -712,11 +712,38 @@ def process_dump_stream(
                         if inner.rstrip().endswith(";"):
                             # Inner already ends with a semicolon; just drop one from the tail.
                             tail = tail[1:]
+                            # Normalize possible blank line after consuming the semicolon.
+                            # mysqldump may output "*/;
+
+SET ..." (semicolon terminator plus an empty line).
+                            # After consuming ';', `tail` begins with a blank line, which can toggle across runs.
+                            # If we have 2+ leading newlines, drop exactly one.
+                            if inner.endswith("
+") and (tail.startswith("
+
+") or tail.startswith("
+
+")):
+                                tail = tail[1:] if tail.startswith("
+
+") else tail[len("
+"):]
                             write_out(inner)
                         else:
                             # Move one semicolon from tail into the inner statement in a safe way.
                             write_out(_attach_leading_semicolon(inner))
                             tail = tail[1:]
+                            # Normalize possible blank line after consuming the semicolon (see above).
+                            if inner.endswith("
+") and (tail.startswith("
+
+") or tail.startswith("
+
+")):
+                                tail = tail[1:] if tail.startswith("
+
+") else tail[len("
+"):]
                     else:
                         write_out(inner)
                 else:
