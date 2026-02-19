@@ -930,6 +930,21 @@ def main():
         ddl=ddl,
     )
 
+    # In DDL mode, apply a final whole-file sanitization pass.
+    #
+    # Rationale: The dump is processed in streaming chunks. Some formatting artifacts (e.g., an
+    # empty line right before 'SET @saved_cs_client') can straddle a chunk boundary, which means
+    # a per-chunk sanitizer cannot reliably remove them. A final pass over the complete output
+    # makes the result deterministic across runs.
+    if args.ddl:
+        try:
+            out_text = Path(output_path).read_text("utf-8", errors="replace")
+            out_text2 = sanitize_ddl_for_reproducibility(out_text)
+            if out_text2 != out_text:
+                Path(output_path).write_text(out_text2, "utf-8")
+        except Exception as e:
+            print(f"[WARN] Final DDL sanitization pass failed: {e}", file=sys.stderr)
+
 
 if __name__ == "__main__":
     main()
