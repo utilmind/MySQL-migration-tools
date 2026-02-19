@@ -9,6 +9,7 @@
 *.txt
 *.log
 *.pem
+tmp*
 /ps1
 _*
 *.credentials.*

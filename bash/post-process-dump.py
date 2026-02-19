@@ -304,6 +304,15 @@ def sanitize_ddl_for_reproducibility(text):
     # Normalize line endings to avoid Windows/Unix diff noise.
     text = text.replace("\r\n", "\n")
 
+    # Normalize 'DELIMITER ;;' placement.
+    # mysqldump may toggle between:
+    #   '/*!50106 SET ... */DELIMITER ;;'
+    # and
+    #   '/*!50106 SET ... */\nDELIMITER ;;'
+    # This is formatting-only noise, so in DDL mode we always put DELIMITER on its own line.
+    text = re.sub(r"\*/\s*DELIMITER\s*;;", "*/\nDELIMITER ;;", text)
+
+
 
     # 4) mysqldump may intermittently insert/remove blank line(s) right before the VIEW preamble
     #    'SET @saved_cs_client = @@character_set_client;'. This is pure formatting noise.
