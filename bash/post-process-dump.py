@@ -4,7 +4,7 @@
 """
 post-process-dump.py
 
-Copyright (c) 2025 utilmind
+Copyright (c) 2025-2026 utilmind
 All rights reserved.
 https://github.com/utilmind/MySQL-Migration-tools/
 
