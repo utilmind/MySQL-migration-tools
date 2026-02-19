@@ -311,10 +311,10 @@ If `--ddl` option is used, it additionally prepare dump for recreation from scra
 
 This makes the output ideal for:
 
-- schema analysis (including with AI tools),
-- sharing database structure without data,
-- preparing migration DDL,
-- creating diffable schema snapshots.
+- schema analysis (including with AI tools), w/o exposing your data. BTW use `--ddl` option to additionally do not expose the number of records in your table by `AUTO_INCREMENT` fields;
+- sharing database structure without data;
+- preparing migration DDL;
+- creating diffable schema snapshots. BTW, see also `--ddl-push` option, if you would like to automatically push your database structure to Git repo and have a diff.
 
 Example:
 
