@@ -325,6 +325,15 @@ def sanitize_ddl_for_reproducibility(text):
         text,
     )
 
+    # Some mysqldump versions intermittently insert an *extra* blank line (or a whitespace-only blank line)
+    # between the temporary view structure comments and the following SET @saved_cs_client.
+    # Normalize it deterministically.
+    text = re.sub(
+        r"(?m)(^--\s*Temporary view structure for view\s+`[^`]+`\n(?:--.*\n)*)[ \t]*\n+(?=SET @saved_cs_client\b)",
+        r"\\1",
+        text,
+    )
+
     # 3) Collapse 3+ consecutive newlines to at most 2 (keeps readability but avoids oscillation).
     text = re.sub(r"\n{3,}", "\n\n", text)
 
