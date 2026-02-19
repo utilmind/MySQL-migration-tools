@@ -301,8 +301,33 @@ def sanitize_ddl_for_reproducibility(text):
     """
     if not text:
         return text
+
+    # Normalize line endings to avoid Windows/Unix diff noise.
+    text = text.replace("\r\n", "\n")
+
+    # Volatile metadata cleanup.
     text = AUTO_INCREMENT_RE.sub("AUTO_INCREMENT=0", text)
     text = DUMP_COMPLETED_ON_RE.sub("-- Dump completed.", text)
+
+    # --- Conservative, deterministic cleanup (DDL mode only) ---
+    # We only remove no-op artifacts that are known to fluctuate between mysqldump runs,
+    # while preserving all meaningful newlines in routines/triggers.
+
+    # 1) Drop lines that contain only a semicolon (can appear after unwrapping versioned comments).
+    text = re.sub(r"(?m)^[ \t]*;[ \t]*\n", "", text)
+    text = re.sub(r"(?m)^[ \t]*;[ \t]*\Z", "", text)
+
+    # 2) Temporary VIEW structure blocks sometimes gain/lose a blank line before SET @saved_cs_client.
+    # Normalize that single location only.
+    text = re.sub(
+        r"(?m)(^--\s*Temporary view structure for view\s+`[^`]+`\n(?:--.*\n)*)\n+(?=SET @saved_cs_client\b)",
+        r"\\1",
+        text,
+    )
+
+    # 3) Collapse 3+ consecutive newlines to at most 2 (keeps readability but avoids oscillation).
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
     return text
 
 
