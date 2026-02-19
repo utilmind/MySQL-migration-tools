@@ -305,6 +305,11 @@ def sanitize_ddl_for_reproducibility(text):
     # Normalize line endings to avoid Windows/Unix diff noise.
     text = text.replace("\r\n", "\n")
 
+    # mysqldump sometimes toggles whether 'DELIMITER ;;' is appended to the end of the previous
+    # versioned comment line (e.g. '/*!50106 SET ... */DELIMITER ;;') or placed on its own line.
+    # Normalize this to ALWAYS put 'DELIMITER ;;' on a separate line to keep diffs stable.
+    text = re.sub(r"\*/\s*DELIMITER\s*;;", "*/\nDELIMITER ;;", text)
+
     # Volatile metadata cleanup.
     text = AUTO_INCREMENT_RE.sub("AUTO_INCREMENT=0", text)
     text = DUMP_COMPLETED_ON_RE.sub("-- Dump completed.", text)
