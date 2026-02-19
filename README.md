@@ -304,7 +304,7 @@ It additionally removes all:
 - `DROP FUNCTION` / `DROP PROCEDURE`
 - versioned DROP-comments (`/*!50001 DROP ... */`)
 
-If `--ddl` option is used, it additionally prepare dump for migration, by
+If `--ddl` option is used, it additionally prepare dump for recreation from scratch, by
 
 - resetting all `AUTO_INCREMENT` counters to 0.
 - naming the output dump with `.ddl.sql` extension.
