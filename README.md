@@ -323,6 +323,100 @@ Specific tables and `--no-data` can be combined:
 ./db-dump.sh --no-data /backups/schema-@.sql production users orders
 ```
 
+### ✅ Schema DDL dump with auto-push to Git (`--ddl-push`)
+
+If you want a **diffable schema snapshot** in Git, `db-dump.sh` can generate a **structure-only** dump and then **commit & push**
+the resulting `*.ddl.sql` file into an **existing local clone**.
+
+This is useful for:
+
+- tracking schema evolution over time,
+- reviewing DDL changes via PRs,
+- keeping an always-up-to-date schema snapshot for deployments.
+
+#### Command format
+
+```bash
+./db-dump.sh --ddl-push /path/to/your-local-repo/database.ddl.sql [configName]
+```
+
+- The output file **must be inside** `gitRepoPath` (unless you explicitly set `gitDdlPath` to copy it).
+- When `--ddl-push` is used, the script commits and pushes **only if the file actually changed**.
+- The script uses a lock file in `/tmp` to avoid concurrent cron runs racing each other.
+
+#### Example: run with a named profile
+
+```bash
+./db-dump.sh --ddl-push /home/project-db-ddl/mydb.ddl.sql production
+```
+
+---
+
+### 🧾 Example credentials profile (with Git settings)
+
+Create a profile file next to `db-dump.sh`, for example:
+
+- `.production.credentials.sh` (used when you pass `production` as the config name)
+
+Example:
+
+```bash
+#!/bin/bash
+
+# DB credentials
+dbHost='localhost'
+dbPort=3306
+dbName=''
+dbUser=''
+dbPass=''
+
+# Specify as bash array, even if only 1 prefix is used. Strings are not accepted. Only array is ok.
+# dbTablePrefix=('table_prefix1_' 'table_prefix2_' 'bot_' 'email_' 'user_')
+
+# ---------------- GIT SETTINGS (for --ddl-push option) ----------------
+# Point to an existing local clone
+gitRepoPath='/home/project-db-ddl'   # must contain `.git` directory!
+# remote/branch names
+gitRemoteName='origin'
+gitBranchName='master'
+#
+# Where to store the ddl dump (relative path inside the repo).
+# If not specified -- don't copy it to certain path, just commit as is.
+# gitDdlPath='ddl/database_name.ddl.sql'
+#
+# Commit author (if server has no global git config)
+gitCommitUsername='ddl-pusher'
+gitCommitEmail='ddl-pusher@example.com'
+
+# Optional, if host alias required (different SSH key, bot user, etc.)
+#gitRemoteUrl='git@github.com-SSH-KEY-ALIAS:GIT-USERNAME/PROJECT_NAME-db-ddl.git'
+```
+
+**Notes**
+
+- `gitRepoPath` must point to an already-cloned repository (no auto-clone).
+- If you use multiple SSH keys on the same server, prefer an SSH host alias (e.g. `github.com-myrepo`) and set `gitRemoteUrl`
+  accordingly, or set your repo's `origin` URL to the alias.
+- `gitCommitUsername` / `gitCommitEmail` affect commit author only (not permissions).
+
+---
+
+### ⏰ Cron example (nightly DDL snapshot)
+
+Example crontab entry that runs every night at **02:10** and logs output:
+
+```cron
+10 2 * * * /home/youruser/_db-utils/db-dump.sh --ddl-push /home/project-db-ddl/mydb.ddl.sql production >> /var/log/db-ddl-dump.log 2>&1
+```
+
+If you prefer **no logs**:
+
+```cron
+10 2 * * * /home/youruser/_db-utils/db-dump.sh --ddl-push /home/project-db-ddl/mydb.ddl.sql production >/dev/null 2>&1
+```
+
+Tip: ensure the cron user can `git push` non-interactively (SSH deploy key or PAT via Git credential helper), and that `origin` points
+to the correct SSH host alias if you use multiple keys on the same machine.
 
 ### Notes & Warnings
 
