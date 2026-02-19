@@ -300,15 +300,16 @@ def sanitize_ddl_for_reproducibility(text):
     make debugging harder (even though it is generally safe).
     """
     if not text:
-
-    # 4) mysqldump may intermittently insert/remove a blank line right before the VIEW preamble
-    #    'SET @saved_cs_client = @@character_set_client;'. This is pure formatting noise.
-    #    Normalize by removing any blank line(s) immediately preceding that SET statement.
-    text = re.sub(r"(?m)^(?:[ \t]*\n)+(?=SET @saved_cs_client\b)", "", text)
         return text
-
     # Normalize line endings to avoid Windows/Unix diff noise.
     text = text.replace("\r\n", "\n")
+
+
+    # 4) mysqldump may intermittently insert/remove blank line(s) right before the VIEW preamble
+    #    'SET @saved_cs_client = @@character_set_client;'. This is pure formatting noise.
+    #    Normalize by removing any blank line(s) immediately preceding that SET statement.
+    text = re.sub(r"(?m)^[ \t]*\n+(?=SET @saved_cs_client\b)", "", text)
+
 
     # mysqldump sometimes toggles whether 'DELIMITER ;;' is appended to the end of the previous
     # versioned comment line (e.g. '/*!50106 SET ... */DELIMITER ;;') or placed on its own line.
