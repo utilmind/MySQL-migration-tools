@@ -334,6 +334,9 @@ This is useful for:
 - reviewing DDL changes via PRs,
 - keeping an always-up-to-date schema snapshot for deployments.
 
+So you can have a repository that can automatically track ALL changes in your database structure:
+<img width="339" height="185" alt="image" src="https://github.com/user-attachments/assets/49821137-b348-46be-9fdd-c5117866ccde" />
+
 #### Command format
 
 ```bash
