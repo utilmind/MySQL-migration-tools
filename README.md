@@ -241,9 +241,9 @@ The Linux version of `db-dump.sh` creates a reliable dump of **one specific data
 It can dump:
 
 - the **entire database** (structure + data),
-- the database **structure only** (with `--no-data` option, e.g. to share/analyze structure w/o exposing data),
-- a **selected set of tables** (with or w/o data, if `--no-data` or `--ddl` is used),
-- if `--ddl` option is used it dumps only database structure (DDL) into file with `.ddl.sql` extension,
+- the database **structure only** (with `--no-data` option, e.g. to share/analyze structure w/o exposing data);
+- a **selected set of tables** (with or w/o data, if `--no-data` or `--ddl` is used);
+- if `--ddl` or `--ddl-push` option is used it dumps only database structure (DDL) into file with `.ddl.sql` extension. It also reset all `AUTO_INCREMENT` counters to 0 in DDL dump;
 - optionally optimized/analyzed tables before dumping, if `--skip-optimize` is not used.
 
 
@@ -292,9 +292,9 @@ You can dump only selected tables by listing them **after** the filename and con
 ```
 
 
-### **Structure-only dump (`--no-data`)**
+### **Structure-only dump (`--no-data` or `--ddl`)**
 
-The `--no-data` option produces an SQL file containing **only the database schema**, without any table rows.
+The `--no-data` or `--ddl` options produces an SQL file containing **only the database schema**, without any table rows.
 
 It additionally removes all:
 
@@ -303,6 +303,11 @@ It additionally removes all:
 - `DROP TRIGGER`
 - `DROP FUNCTION` / `DROP PROCEDURE`
 - versioned DROP-comments (`/*!50001 DROP ... */`)
+
+If `--ddl` option is used, it additionally prepare dump for migration, by
+
+- resetting all `AUTO_INCREMENT` counters to 0.
+- naming the output dump with `.ddl.sql` extension.
 
 This makes the output ideal for:
 
