@@ -726,10 +726,9 @@ def process_dump_stream(
                             # Normalize possible blank line after consuming the semicolon (see above).
                             if inner.endswith("\n") and (tail.startswith("\n\n") or tail.startswith("\r\n\r\n")):
                                 tail = tail[1:] if tail.startswith("\n\n") else tail[len("\r\n"):]
-                        write_out(inner)
-                else:
-                    # Keep the whole comment block as-is
-                    write_out(comment[:end_pos + 2])
+                    else:
+                        # Keep the whole comment block as-is
+                        write_out(comment[:end_pos + 2])
 
                 # Now we continue processing the tail of the comment
                 line = tail
