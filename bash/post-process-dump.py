@@ -51,7 +51,7 @@ import os
 import re
 import sys
 import argparse
-
+from pathlib import Path
 
 def find_conditional_end(comment):
     """
@@ -289,73 +289,43 @@ DUMP_COMPLETED_ON_RE = re.compile(r"(?m)^--\s+Dump\s+completed\s+on\s+.*$")
 
 def sanitize_ddl_for_reproducibility(text):
     """
-    Normalize volatile parts of a schema-only dump so Git diffs are meaningful.
-
-    Rules:
-      - Replace any 'AUTO_INCREMENT=<number>' with 'AUTO_INCREMENT=0'
-      - Replace '-- Dump completed on <timestamp>' with '-- Dump completed.'
-
-    Note: This function is intended for schema-only dumps. It is NOT enabled by
-    default for full data dumps, because altering comment lines in data dumps can
-    make debugging harder (even though it is generally safe).
+    Normalize DDL for stable Git diffs.
+    Resets volatile metadata and eliminates inconsistent blank lines.
     """
     if not text:
         return text
-    # Normalize line endings to avoid Windows/Unix diff noise.
+
+    # 1. Normalize line endings to Unix-style (LF)
     text = text.replace("\r\n", "\n")
 
-    # mysqldump may intermittently insert/remove blank line(s) right before the VIEW preamble
-    #    'SET @saved_cs_client = @@character_set_client;'. This is pure formatting noise.
-    #    Normalize by removing any blank line(s) immediately preceding that SET statement.
-    text = re.sub(r"(?m)^[ \t]*\n+(?=SET @saved_cs_client\b)", "", text)
+    # 2. Strip whitespace from otherwise empty lines to prevent Git noise
+    text = re.sub(r"(?m)^[ \t]+$", "", text)
 
-    # Volatile metadata cleanup.
+    # 3. Reset volatile metadata (AUTO_INCREMENT values and completion timestamps)
     text = AUTO_INCREMENT_RE.sub("AUTO_INCREMENT=0", text)
     text = DUMP_COMPLETED_ON_RE.sub("-- Dump completed.", text)
 
-    # --- Conservative, deterministic cleanup (DDL mode only) ---
-    # We only remove no-op artifacts that are known to fluctuate between mysqldump runs,
-    # while preserving all meaningful newlines in routines/triggers.
+    # 4. Remove redundant newlines between VIEW structure comments and the code.
+    # This targets the specific gap shown in your git diff.
+    view_comment_pattern = r"(-- Temporary view structure for view `[^`]+`\n(?:--.*\n)*)\n+(?=SET @saved_cs_client\b)"
+    text = re.sub(view_comment_pattern, r"\1", text)
 
-    # 1) Drop lines that contain only a semicolon (can appear after unwrapping versioned comments).
-    text = re.sub(r"(?m)^[ \t]*;[ \t]*\n", "", text)
-    text = re.sub(r"(?m)^[ \t]*;[ \t]*\Z", "", text)
+    # 5. Ensure exactly one newline before specific SET statements that tend to "jump"
+    text = re.sub(r"\n+(?=SET @saved_cs_client\b)", "\n", text)
 
-    # 2) Temporary VIEW structure blocks sometimes gain/lose a blank line before SET @saved_cs_client.
-    # Normalize that single location only.
-    text = re.sub(
-        r"(?m)(^--\s*Temporary view structure for view\s+`[^`]+`\n(?:--.*\n)*)\n+(?=SET @saved_cs_client\b)",
-        r"\\1",
-        text,
-    )
+    # 6. Remove lines containing only a semicolon (artifacts from unwrapping comments)
+    text = re.sub(r"(?m)^;[ \t]*\n", "", text)
 
-    # Some mysqldump versions intermittently insert an *extra* blank line (or a whitespace-only blank line)
-    # between the temporary view structure comments and the following SET @saved_cs_client.
-    # Normalize it deterministically.
-    text = re.sub(
-        r"(?m)(^--\s*Temporary view structure for view\s+`[^`]+`\n(?:--.*\n)*)[ \t]*\n+(?=SET @saved_cs_client\b)",
-        r"\\1",
-        text,
-    )
-
-    # Normalize 'DELIMITER ;;' placement.
-    # mysqldump sometimes toggles whether 'DELIMITER ;;' is appended to the end of the previous
-    # versioned comment line (e.g. '/*!50106 SET ... */DELIMITER ;;') or placed on its own line.
-    #   '/*!50106 SET ... */DELIMITER ;;'
-    # and
-    #   '/*!50106 SET ... */\nDELIMITER ;;'
-    # This is formatting-only noise, so in DDL mode we always put DELIMITER on its own line.
-    # Normalize this to ALWAYS put 'DELIMITER ;;' on a separate line to keep diffs stable.
+    # 7. Normalize DELIMITER placement (always ensure it starts on a new line)
     text = re.sub(r"\*/\s*DELIMITER\s*;;", "*/\nDELIMITER ;;", text)
 
-    # Remove formatting-only separator lines consisting of only '--' (optionally with spaces).
-    # These sometimes appear/disappear between runs and are not meaningful DDL.
-    text = re.sub(r"(?m)^[ \t]*--[ \t]*\n", "", text)
+    # 8. Remove formatting-only separator lines consisting of only '--'
+    text = re.sub(r"(?m)^--[ \t]*\n", "", text)
 
-    # Collapse 3+ consecutive newlines to at most 2 (keeps readability but avoids oscillation).
+    # 9. Collapse 3+ consecutive newlines to at most 2 and ensure single trailing newline
     text = re.sub(r"\n{3,}", "\n\n", text)
 
-    return text
+    return text.strip() + "\n"
 
 
 def enhance_create_table(text, state, table_meta, default_schema):
@@ -938,19 +908,19 @@ def main():
     )
 
     # In DDL mode, apply a final whole-file sanitization pass.
-    #
-    # Rationale: The dump is processed in streaming chunks. Some formatting artifacts (e.g., an
-    # empty line right before 'SET @saved_cs_client') can straddle a chunk boundary, which means
-    # a per-chunk sanitizer cannot reliably remove them. A final pass over the complete output
-    # makes the result deterministic across runs.
+    # This pass handles formatting artifacts that might straddle chunk boundaries
+    # during streaming, ensuring the final output is 100% deterministic.
     if args.ddl:
         try:
-            out_text = Path(output_path).read_text("utf-8", errors="replace")
-            out_text2 = sanitize_ddl_for_reproducibility(out_text)
-            if out_text2 != out_text:
-                Path(output_path).write_text(out_text2, "utf-8")
+            # Use the correct variable 'out_path' (not 'output_path')
+            p = Path(out_path)
+            out_text = p.read_text("utf-8", errors="replace")
+            sanitized_text = sanitize_ddl_for_reproducibility(out_text)
+
+            if sanitized_text != out_text:
+                p.write_text(sanitized_text, "utf-8")
         except Exception as e:
-            print(f"[WARN] Final DDL sanitization pass failed: {e}", file=sys.stderr)
+            sys.stderr.write(f"\n[WARN] Final DDL sanitization pass failed: {e}\n")
 
 
 if __name__ == "__main__":
