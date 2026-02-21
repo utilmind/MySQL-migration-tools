@@ -305,25 +305,19 @@ def sanitize_ddl_for_reproducibility(text):
     text = text.replace("\r\n", "\n")
 
     # Normalize 'DELIMITER ;;' placement.
-    # mysqldump may toggle between:
+    # mysqldump sometimes toggles whether 'DELIMITER ;;' is appended to the end of the previous
+    # versioned comment line (e.g. '/*!50106 SET ... */DELIMITER ;;') or placed on its own line.
     #   '/*!50106 SET ... */DELIMITER ;;'
     # and
     #   '/*!50106 SET ... */\nDELIMITER ;;'
     # This is formatting-only noise, so in DDL mode we always put DELIMITER on its own line.
+    # Normalize this to ALWAYS put 'DELIMITER ;;' on a separate line to keep diffs stable.
     text = re.sub(r"\*/\s*DELIMITER\s*;;", "*/\nDELIMITER ;;", text)
 
-
-
-    # 4) mysqldump may intermittently insert/remove blank line(s) right before the VIEW preamble
+    # mysqldump may intermittently insert/remove blank line(s) right before the VIEW preamble
     #    'SET @saved_cs_client = @@character_set_client;'. This is pure formatting noise.
     #    Normalize by removing any blank line(s) immediately preceding that SET statement.
     text = re.sub(r"(?m)^[ \t]*\n+(?=SET @saved_cs_client\b)", "", text)
-
-
-    # mysqldump sometimes toggles whether 'DELIMITER ;;' is appended to the end of the previous
-    # versioned comment line (e.g. '/*!50106 SET ... */DELIMITER ;;') or placed on its own line.
-    # Normalize this to ALWAYS put 'DELIMITER ;;' on a separate line to keep diffs stable.
-    text = re.sub(r"\*/\s*DELIMITER\s*;;", "*/\nDELIMITER ;;", text)
 
     # Volatile metadata cleanup.
     text = AUTO_INCREMENT_RE.sub("AUTO_INCREMENT=0", text)
