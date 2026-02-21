@@ -289,36 +289,43 @@ DUMP_COMPLETED_ON_RE = re.compile(r"(?m)^--\s+Dump\s+completed\s+on\s+.*$")
 
 def sanitize_ddl_for_reproducibility(text):
     """
-    Normalize DDL for stable Git diffs.
-    Resets volatile metadata and eliminates inconsistent blank lines.
+    Normalize volatile parts of a schema-only dump so Git diffs are meaningful.
+
+    Rules:
+      - Replace any 'AUTO_INCREMENT=<number>' with 'AUTO_INCREMENT=0'
+      - Replace '-- Dump completed on <timestamp>' with '-- Dump completed.'
+
+    Note: This function is intended for schema-only dumps. It is NOT enabled by
+    default for full data dumps, because altering comment lines in data dumps can
+    make debugging harder (even though it is generally safe).
     """
     if not text:
         return text
 
-    # 1. Normalize line endings to Unix-style (LF) to avoid double newlines on Windows
+    # 1) Normalize line endings early to make regex behavior deterministic.
     text = text.replace("\r\n", "\n")
 
-    # 2. Reset volatile metadata (AUTO_INCREMENT values and completion timestamps)
-    # This ensures that structural changes are the only things showing in diffs
+    # 2) Reset AUTO_INCREMENT values to a stable constant.
     text = AUTO_INCREMENT_RE.sub("AUTO_INCREMENT=0", text)
+
+    # 3) Normalize mysqldump completion timestamp.
     text = DUMP_COMPLETED_ON_RE.sub("-- Dump completed.", text)
 
-    # 3. Fix "jumping" blank lines before VIEW structures and SET statements
-    # This targets the gap between 'Temporary view structure' comments and the code.
+    # 4) Fix gaps between 'Temporary view structure' comments and subsequent SET statements.
     view_comment_pattern = r"(-- Temporary view structure for view `[^`]+`\n(?:--.*\n)*)\n+(?=SET @saved_cs_client\b)"
     text = re.sub(view_comment_pattern, r"\1", text)
 
-    # 4. Remove blank lines between consecutive SET statements
-    # This specifically fixes the "line doubling" issue seen in the header and before CREATE TABLE.
+    # 5) Remove blank lines between consecutive SET statements.
+    # Keep it minimal to avoid touching other formatting.
     text = re.sub(r"(SET\s+[^;]+;)\n\s*\n(?=SET\s+)", r"\1\n", text)
 
-    # 5. Remove lines containing only a semicolon (common artifact from unwrap logic)
+    # 6) Remove lines containing only a semicolon (artifact from unwrap/reattach logic).
     text = re.sub(r"(?m)^;[ \t]*\n", "", text)
 
-    # 6. Normalize DELIMITER placement (always ensure it starts on a new line)
+    # 7) Normalize DELIMITER placement (start on a new line after versioned comment closure).
     text = re.sub(r"\*/\s*DELIMITER\s*;;", "*/\nDELIMITER ;;", text)
 
-    # 7. Collapse 3+ consecutive newlines to at most 2 to keep code clean but compact
+    # 8) Collapse excessive newlines (3+ -> 2).
     text = re.sub(r"\n{3,}", "\n\n", text)
 
     return text
