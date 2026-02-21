@@ -10,7 +10,10 @@
 *.log
 *.pem
 tmp*
-/ps1
 _*
 *.credentials.*
 !.sample.credentials.sh
+
+# Tests, experiments and unfinished prototypes
+/ps1
+/bash/ai/
