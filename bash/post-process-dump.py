@@ -302,30 +302,40 @@ def sanitize_ddl_for_reproducibility(text):
     if not text:
         return text
 
-    # 1) Normalize line endings early to make regex behavior deterministic.
+    # Make regex behavior deterministic across platforms/tools.
     text = text.replace("\r\n", "\n")
 
-    # 2) Reset AUTO_INCREMENT values to a stable constant.
+    # Reset AUTO_INCREMENT values to a stable constant.
     text = AUTO_INCREMENT_RE.sub("AUTO_INCREMENT=0", text)
 
-    # 3) Normalize mysqldump completion timestamp.
+    # Normalize mysqldump completion timestamp.
     text = DUMP_COMPLETED_ON_RE.sub("-- Dump completed.", text)
 
-    # 4) Fix gaps between 'Temporary view structure' comments and subsequent SET statements.
+    # Fix gaps between 'Temporary view structure' comments and subsequent SET statements.
     view_comment_pattern = r"(-- Temporary view structure for view `[^`]+`\n(?:--.*\n)*)\n+(?=SET @saved_cs_client\b)"
     text = re.sub(view_comment_pattern, r"\1", text)
 
-    # 5) Remove blank lines between consecutive SET statements.
+    # Remove blank lines between consecutive SET statements (minimal touch).
     # Keep it minimal to avoid touching other formatting.
     text = re.sub(r"(SET\s+[^;]+;)\n\s*\n(?=SET\s+)", r"\1\n", text)
 
-    # 6) Remove lines containing only a semicolon (artifact from unwrap/reattach logic).
+    # Normalize mysqldump's "END; ;" into "END;;" (keep DELIMITER on next line).
+    text = re.sub(r"(?m)^END;[ \t]*;[ \t]*\n(?=DELIMITER\b)", "END;;\n", text)
+
+    # Remove lines containing only a semicolon (artifact).
     text = re.sub(r"(?m)^;[ \t]*\n", "", text)
 
-    # 7) Normalize DELIMITER placement (start on a new line after versioned comment closure).
+    # Ensure delimiter starts on a new line after versioned comment closure.
     text = re.sub(r"\*/\s*DELIMITER\s*;;", "*/\nDELIMITER ;;", text)
 
-    # 8) Collapse excessive newlines (3+ -> 2).
+    # Strip trailing whitespace on each line (great for stable Git diffs).
+    text = re.sub(r"[ \t]+\n", "\n", text)
+
+    # Remove exactly one leading space from common top-level mysqldump lines.
+    # Avoid touching indented routine bodies (usually 2+ spaces).
+    text = re.sub(r"(?m)^ (?=(?:SET|VIEW)\b)", "", text)
+
+    # Collapse excessive newlines (3+ -> 2).
     text = re.sub(r"\n{3,}", "\n\n", text)
 
     return text
