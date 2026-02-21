@@ -304,16 +304,6 @@ def sanitize_ddl_for_reproducibility(text):
     # Normalize line endings to avoid Windows/Unix diff noise.
     text = text.replace("\r\n", "\n")
 
-    # Normalize 'DELIMITER ;;' placement.
-    # mysqldump sometimes toggles whether 'DELIMITER ;;' is appended to the end of the previous
-    # versioned comment line (e.g. '/*!50106 SET ... */DELIMITER ;;') or placed on its own line.
-    #   '/*!50106 SET ... */DELIMITER ;;'
-    # and
-    #   '/*!50106 SET ... */\nDELIMITER ;;'
-    # This is formatting-only noise, so in DDL mode we always put DELIMITER on its own line.
-    # Normalize this to ALWAYS put 'DELIMITER ;;' on a separate line to keep diffs stable.
-    text = re.sub(r"\*/\s*DELIMITER\s*;;", "*/\nDELIMITER ;;", text)
-
     # mysqldump may intermittently insert/remove blank line(s) right before the VIEW preamble
     #    'SET @saved_cs_client = @@character_set_client;'. This is pure formatting noise.
     #    Normalize by removing any blank line(s) immediately preceding that SET statement.
@@ -348,7 +338,21 @@ def sanitize_ddl_for_reproducibility(text):
         text,
     )
 
-    # 3) Collapse 3+ consecutive newlines to at most 2 (keeps readability but avoids oscillation).
+    # Normalize 'DELIMITER ;;' placement.
+    # mysqldump sometimes toggles whether 'DELIMITER ;;' is appended to the end of the previous
+    # versioned comment line (e.g. '/*!50106 SET ... */DELIMITER ;;') or placed on its own line.
+    #   '/*!50106 SET ... */DELIMITER ;;'
+    # and
+    #   '/*!50106 SET ... */\nDELIMITER ;;'
+    # This is formatting-only noise, so in DDL mode we always put DELIMITER on its own line.
+    # Normalize this to ALWAYS put 'DELIMITER ;;' on a separate line to keep diffs stable.
+    text = re.sub(r"\*/\s*DELIMITER\s*;;", "*/\nDELIMITER ;;", text)
+
+    # Remove formatting-only separator lines consisting of only '--' (optionally with spaces).
+    # These sometimes appear/disappear between runs and are not meaningful DDL.
+    text = re.sub(r"(?m)^[ \t]*--[ \t]*\n", "", text)
+
+    # Collapse 3+ consecutive newlines to at most 2 (keeps readability but avoids oscillation).
     text = re.sub(r"\n{3,}", "\n\n", text)
 
     return text
