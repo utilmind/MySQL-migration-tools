@@ -911,10 +911,10 @@ def main():
             # Use the whole-file pass to enforce final formatting rules
             p = Path(out_path)
             out_text = p.read_text("utf-8", errors="replace")
-            
+
             # Apply sanitization and enforce a single trailing newline for the whole file
             sanitized_text = sanitize_ddl_for_reproducibility(out_text).strip() + "\n"
-            
+
             if sanitized_text != out_text:
                 p.write_text(sanitized_text, "utf-8")
         except Exception as e:
