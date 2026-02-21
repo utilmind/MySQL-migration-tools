@@ -295,37 +295,33 @@ def sanitize_ddl_for_reproducibility(text):
     if not text:
         return text
 
-    # 1. Normalize line endings to Unix-style (LF)
+    # 1. Normalize line endings to Unix-style (LF) to avoid double newlines on Windows
     text = text.replace("\r\n", "\n")
 
-    # 2. Strip whitespace from otherwise empty lines to prevent Git noise
-    text = re.sub(r"(?m)^[ \t]+$", "", text)
-
-    # 3. Reset volatile metadata (AUTO_INCREMENT values and completion timestamps)
+    # 2. Reset volatile metadata (AUTO_INCREMENT values and completion timestamps)
+    # This ensures that structural changes are the only things showing in diffs
     text = AUTO_INCREMENT_RE.sub("AUTO_INCREMENT=0", text)
     text = DUMP_COMPLETED_ON_RE.sub("-- Dump completed.", text)
 
-    # 4. Remove redundant newlines between VIEW structure comments and the code.
-    # This targets the specific gap shown in your git diff.
+    # 3. Fix "jumping" blank lines before VIEW structures and SET statements
+    # This targets the gap between 'Temporary view structure' comments and the code.
     view_comment_pattern = r"(-- Temporary view structure for view `[^`]+`\n(?:--.*\n)*)\n+(?=SET @saved_cs_client\b)"
     text = re.sub(view_comment_pattern, r"\1", text)
 
-    # 5. Ensure exactly one newline before specific SET statements that tend to "jump"
-    text = re.sub(r"\n+(?=SET @saved_cs_client\b)", "\n", text)
+    # 4. Remove blank lines between consecutive SET statements
+    # This specifically fixes the "line doubling" issue seen in the header and before CREATE TABLE.
+    text = re.sub(r"(SET\s+[^;]+;)\n\s*\n(?=SET\s+)", r"\1\n", text)
 
-    # 6. Remove lines containing only a semicolon (artifacts from unwrapping comments)
+    # 5. Remove lines containing only a semicolon (common artifact from unwrap logic)
     text = re.sub(r"(?m)^;[ \t]*\n", "", text)
 
-    # 7. Normalize DELIMITER placement (always ensure it starts on a new line)
+    # 6. Normalize DELIMITER placement (always ensure it starts on a new line)
     text = re.sub(r"\*/\s*DELIMITER\s*;;", "*/\nDELIMITER ;;", text)
 
-    # 8. Remove formatting-only separator lines consisting of only '--'
-    text = re.sub(r"(?m)^--[ \t]*\n", "", text)
-
-    # 9. Collapse 3+ consecutive newlines to at most 2 and ensure single trailing newline
+    # 7. Collapse 3+ consecutive newlines to at most 2 to keep code clean but compact
     text = re.sub(r"\n{3,}", "\n\n", text)
 
-    return text.strip() + "\n"
+    return text
 
 
 def enhance_create_table(text, state, table_meta, default_schema):
@@ -912,11 +908,13 @@ def main():
     # during streaming, ensuring the final output is 100% deterministic.
     if args.ddl:
         try:
-            # Use the correct variable 'out_path' (not 'output_path')
+            # Use the whole-file pass to enforce final formatting rules
             p = Path(out_path)
             out_text = p.read_text("utf-8", errors="replace")
-            sanitized_text = sanitize_ddl_for_reproducibility(out_text)
-
+            
+            # Apply sanitization and enforce a single trailing newline for the whole file
+            sanitized_text = sanitize_ddl_for_reproducibility(out_text).strip() + "\n"
+            
             if sanitized_text != out_text:
                 p.write_text(sanitized_text, "utf-8")
         except Exception as e:
