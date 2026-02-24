@@ -740,25 +740,30 @@ def process_dump_stream(
                     # Unwrap: emit only the inner content.
                     # Important: mysqldump often places the terminating semicolon *after* the
                     # versioned comment, e.g. "/*!50001 VIEW ... */;". When we unwrap, that
-                    # semicolon becomes a standalone line in the output, which creates noisy diffs.
-                    # To keep output stable, we "re-attach" a single leading semicolon from the
-                    # tail back to the unwrapped inner statement.
+                    # semicolon can become a standalone token/line in the output, creating noisy diffs.
+                    #
+                    # In deterministic DDL mode, we "re-attach" exactly one leading semicolon from
+                    # `tail` back to the unwrapped inner statement (while preserving whitespace).
+                    consumed_semicolon = False
+
                     if ddl and tail.startswith(";"):
-                        # Move one leading ';' from tail to the inner statement.
+                        # Move exactly one leading ';' from tail to the inner statement.
                         if inner.rstrip().endswith(";"):
-                            # Inner already ends with ';' -> just consume one leading ';' from tail.
-                            tail = tail[1:]  # Drop one ';' from tail to avoid ';;'
+                            # Inner already ends with ';' -> just consume one leading ';' from tail to avoid ';;'.
                             write_out(inner)
                         else:
-                            # Attach exactly one ';' to inner (preserving trailing whitespace).
+                            # Attach exactly one ';' to inner (preserving trailing whitespace/newlines).
                             write_out(attach_leading_semicolon(inner))
-                            tail = tail[1:] # Consume exactly one ';'
-
-                            # Normalize possible blank line after consuming the semicolon.
-                            if inner.endswith("\n") and (tail.startswith("\n\n") or tail.startswith("\r\n\r\n")):
-                                tail = tail[1:] if tail.startswith("\n\n") else tail[len("\r\n"):]
+                        tail = tail[1:]  # Consume exactly one ';' from tail in both sub-cases above.
+                        consumed_semicolon = True
                     else:
                         write_out(inner)
+
+                    # Normalize possible blank line after consuming the semicolon.
+                    # mysqldump may output "*/;\n\nSET ..." (semicolon terminator plus an empty line).
+                    # After consuming ';', `tail` can begin with a blank line that toggles across runs.
+                    if consumed_semicolon and inner.endswith("\n") and (tail.startswith("\n\n") or tail.startswith("\r\n\r\n")):
+                        tail = tail[1:] if tail.startswith("\n\n") else tail[len("\r\n"):]
                 else:
                     # Keep the whole comment block as-is
                     write_out(comment[:end_pos + 2])
