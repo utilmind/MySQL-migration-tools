@@ -333,7 +333,7 @@ def sanitize_ddl_for_reproducibility(text):
 
     # Remove exactly one leading space from common top-level mysqldump lines.
     # Avoid touching indented routine bodies (usually 2+ spaces).
-    text = re.sub(r"(?m)^ (?=(?:SET|VIEW)\b)", "", text)
+    text = re.sub(r"(?m)^ (?=(?:SET|VIEW|CREATE)\b)", "", text)
 
     # Collapse excessive newlines (3+ -> 2).
     text = re.sub(r"\n{3,}", "\n\n", text)
@@ -810,8 +810,25 @@ def process_dump_stream(
                     if consumed_semicolon and written_inner.endswith("\n") and (tail.startswith("\n\n") or tail.startswith("\r\n\r\n")):
                         tail = tail[1:] if tail.startswith("\n\n") else tail[len("\r\n"):]
                 else:
-                    # Keep the whole comment block as-is
-                    write_out(comment[:end_pos + 2])
+                    # Keep the whole comment block as-is.
+                    kept = comment[:end_pos + 2]
+
+                    # Important: mysqldump often places the terminating semicolon AFTER the '*/'
+                    # (i.e. in `tail`). If we output only '*/' and later output ';' as a standalone
+                    # line, DDL sanitization may remove that line as an artifact, causing statements
+                    # to collapse into a single line. Keep '*/;' together when possible.
+                    if tail.startswith(";"):
+                        kept += ";"
+                        tail = tail[1:]  # consume exactly one ';' from tail
+
+                        # Optional: normalize possible blank line after consuming ';'
+                        # (mysqldump may output "*/;\n\nSET ...")
+                        if tail.startswith("\n\n"):
+                            tail = tail[1:]
+                        elif tail.startswith("\r\n\r\n"):
+                            tail = tail[len("\r\n"):]
+
+                    write_out(kept)
 
                 # Now we continue processing the tail of the comment
                 line = tail
@@ -858,6 +875,17 @@ def main():
             "Enable DDL reproducibility mode: set all AUTO_INCREMENT values to 0 "
             "and remove mysqldump completion timestamps (e.g. '-- Dump completed on ...'). "
             "Intended for schema-only dumps committed to version control."
+        ),
+    )
+    parser.add_argument(
+        "--version-threshold",
+        dest="version_threshold",
+        type=int,
+        default=80000,
+        help=(
+            "Compatibility cutoff for versioned comments like /*!50003 ... */. "
+            "Comments with a tag lower than this value may be unwrapped (depending on mode). "
+            "Default: 80000 (MySQL 8.0.0)."
         ),
     )
     parser.add_argument(
@@ -959,7 +987,7 @@ def main():
     process_dump_stream(
         in_path,
         out_path,
-        version_threshold=80000, # unwrap compatibility comments lower than specified version. (E.g 80000 = MySQL 8.0.)
+        version_threshold=args.version_threshold, # unwrap compatibility comments lower than specified version. (E.g 80000 = MySQL 8.0.)
         table_meta=table_meta,
         default_schema=default_schema,
         db_name=db_name,
