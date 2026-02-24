@@ -591,7 +591,7 @@ log_info "Running $MYSQLDUMP_BIN for database '$dbName' into '$targetFilename' .
 #   * optionally prepends USE `db_name`; statement, when --db-name is used
 #   * optionally prepends a custom file to the dump, when --prepend-file is used
 postProcessor="$scriptDir/post-process-dump.py"
-need_fallback_use_header=0
+need_fallback_use_header=1
 
 if [ -f "$postProcessor" ]; then
     if command -v python3 >/dev/null 2>&1; then
@@ -607,19 +607,17 @@ if [ -f "$postProcessor" ]; then
         if [ $? -eq 0 ]; then
             mv "$tmpProcessed" "$targetFilename"
             log_ok "Dump post-processing completed."
+            need_fallback_use_header=0
         else
             log_error "Python post-processing failed; falling back to simple USE header injection."
             # make sure we don't leave partial tmp file around if python failed mid-way
             rm -f "$tmpProcessed"
-            need_fallback_use_header=1
         fi
     else
         log_warn "Python3 is not installed; falling back to simple USE header injection."
-        need_fallback_use_header=1
     fi
 else
     log_warn "Dump post-processing script not found: $postProcessor; falling back to simple USE header injection."
-    need_fallback_use_header=1
 fi
 
 if [ "$need_fallback_use_header" -eq 1 ]; then

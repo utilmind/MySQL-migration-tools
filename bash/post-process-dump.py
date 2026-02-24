@@ -562,7 +562,48 @@ def process_dump_stream(
     ddl=False,
 ):
     """
-    Stream-process input dump:
+    Stream-process a mysqldump SQL file and write a normalized/cleaned version.
+
+    Args:
+        in_path:
+            Path to the input .sql dump file (potentially multi-GB).
+        out_path:
+            Path to the output file produced by post-processing.
+
+        version_threshold:
+            Compatibility cutoff for MySQL "versioned comments" of the form:
+                /*!50003 SOME SQL */;
+            The numeric tag (e.g. 50003) encodes a minimum server version:
+                50003 == 5.0.3 (major*10000 + minor*100 + patch).
+
+            The script may "unwrap" (emit inner SQL without /*!...*/) only for
+            version tags LOWER than this threshold, because that SQL is assumed
+            to be safe/available on the target servers.
+
+            By default this is 80000 (8.0.0). With 80000:
+              - Comments tagged 5.x / 10.x (e.g. 50003, 50700) are considered safe to unwrap.
+              - Comments tagged 8.0.0+ (>= 80000) are kept as /*!...*/ to avoid
+                accidentally emitting SQL not supported by older targets.
+
+        table_meta:
+            Optional table metadata (e.g. engines/charsets) used for additional
+            normalization steps.
+        default_schema:
+            Schema name to assume when the dump omits explicit qualifiers.
+        db_name:
+            Optional database name used for rewriting/normalization.
+        no_drop:
+            If True, suppress DROP statements (useful for "create-from-scratch"
+            scenarios or certain migration workflows).
+        prepend_file:
+            Optional path to a file whose contents should be prepended to the
+            output (e.g. header SQL, session settings).
+        ddl:
+            If True, treat the dump as a schema/DDL dump intended for deterministic
+            diffs and migrations. In this mode we prefer preserving mysqldump's
+            versioned compatibility comments rather than unwrapping them.
+
+    What it's doing:
 
     - write a header line and optional USE `db_name`; at the very top
     - read line by line
@@ -918,7 +959,7 @@ def main():
     process_dump_stream(
         in_path,
         out_path,
-        version_threshold=80000,
+        version_threshold=80000, # unwrap compatibility comments lower than specified version. (E.g 80000 = MySQL 8.0.)
         table_meta=table_meta,
         default_schema=default_schema,
         db_name=db_name,
