@@ -53,6 +53,15 @@ import sys
 import argparse
 from pathlib import Path
 
+# Safety cap for collecting multi-line "/*!<digits> ... */" blocks.
+#
+# If we accidentally treat data inside INSERT statements as a versioned comment
+# (e.g., when the payload contains the literal sequence "/*!50003"), the parser
+# may try to read until it finds a closing "*/". On malformed dumps, or when
+# such a closing token is extremely far away, the script could otherwise keep
+# appending lines and consume huge amounts of memory/time.
+MAX_COMMENT_CHARS = 16 * 1024 * 1024  # 16 MiB
+
 def find_conditional_end(comment):
     """
     Given a string that starts with a versioned comment:
@@ -605,17 +614,17 @@ def process_dump_stream(
 
     What it's doing:
 
-    - write a header line and optional USE `db_name`; at the very top
-    - read line by line
-    - for each '/*!<digits>' block, read until its matching '*/'
-      (across multiple lines, with nested '/* ... */' support)
-    - if version < threshold: unwrap (emit only inner content)
-    - else: keep the whole comment as-is
-    - optionally enhance CREATE TABLE statements using table_meta
-    - optionally sanitize volatile DDL parts (AUTO_INCREMENT, completion timestamp) when ddl is True
-    - optionally strip DROP* statements when no_drop is True
-    - write everything to out_path
-    - print progress to stderr
+        - write a header line and optional USE `db_name`; at the very top
+        - read line by line
+        - for each '/*!<digits>' block, read until its matching '*/'
+          (across multiple lines, with nested '/* ... */' support)
+        - if version < threshold: unwrap (emit only inner content)
+        - else: keep the whole comment as-is
+        - optionally enhance CREATE TABLE statements using table_meta
+        - optionally sanitize volatile DDL parts (AUTO_INCREMENT, completion timestamp) when ddl is True
+        - optionally strip DROP* statements when no_drop is True
+        - write everything to out_path
+        - print progress to stderr
     """
     if table_meta is None:
         table_meta = {}
@@ -714,9 +723,32 @@ def process_dump_stream(
             # We may modify 'line' as we consume versioned comments
             pos = 0
             while True:
+                # Treat versioned comments only if they begin at the start of the
+                # current chunk (after leading whitespace). This avoids false
+                # positives when "/*!<digits>" appears inside INSERT payloads.
                 idx = line.find("/*!", pos)
                 if idx == -1:
                     # No more versioned comments in this line/tail
+                    write_out(line[pos:])
+                    break
+
+                # Find the first non-whitespace character between pos and idx.
+                # If "/*!" is not at the logical beginning (after whitespace),
+                # we refuse to parse it as a versioned comment and emit the rest
+                # of the line as-is.
+                first_non_ws = None
+                scan_i = pos
+                while scan_i < len(line):
+                    ch = line[scan_i]
+                    if ch not in (" ", "\t"):
+                        first_non_ws = scan_i
+                        break
+                    scan_i += 1
+                if first_non_ws is None:
+                    # The remainder is only whitespace.
+                    write_out(line[pos:])
+                    break
+                if idx != first_non_ws:
                     write_out(line[pos:])
                     break
 
@@ -761,7 +793,24 @@ def process_dump_stream(
                         total_size,
                         last_percent_reported,
                     )
+
                     comment += next_line
+
+                    # Safety cap: if we keep accumulating without finding a closing
+                    # "*/", treat this as a false positive (or a malformed dump)
+                    # and emit the collected text as-is.
+                    if len(comment) > MAX_COMMENT_CHARS:
+                        write_out(line[pos:idx])
+                        write_out(comment)
+                        # Skip further processing for this outer line; the file
+                        # pointer is already advanced past the consumed lines.
+                        line = ""
+                        pos = 0
+                        break
+
+                if not line:
+                    # We bailed out due to MAX_COMMENT_CHARS safety cap.
+                    break
 
                 # At this point we have a full '/*!<digits> ... */' in 'comment'
                 version_str = comment[3:digits_end]
@@ -847,6 +896,20 @@ def main():
             "comments and optionally normalize CREATE TABLE statements using table metadata."
         )
     )
+
+    parser.add_argument(
+        "--version-threshold",
+        dest="version_threshold",
+        type=int,
+        default=80000,
+        help=(
+            "Compatibility cutoff for versioned comments like /*!50003 ... */. "
+            "The numeric tag encodes a minimum server version (major*10000 + minor*100 + patch). "
+            "Comments with a tag lower than this threshold may be unwrapped, while comments with a tag "
+            "greater than or equal to the threshold are kept as /*!...*/. "
+            "Default: 80000 (MySQL 8.0.0)."
+        ),
+    )
     parser.add_argument(
         "--db-name",
         "--db",
@@ -875,17 +938,6 @@ def main():
             "Enable DDL reproducibility mode: set all AUTO_INCREMENT values to 0 "
             "and remove mysqldump completion timestamps (e.g. '-- Dump completed on ...'). "
             "Intended for schema-only dumps committed to version control."
-        ),
-    )
-    parser.add_argument(
-        "--version-threshold",
-        dest="version_threshold",
-        type=int,
-        default=80000,
-        help=(
-            "Compatibility cutoff for versioned comments like /*!50003 ... */. "
-            "Comments with a tag lower than this value may be unwrapped (depending on mode). "
-            "Default: 80000 (MySQL 8.0.0)."
         ),
     )
     parser.add_argument(
@@ -923,6 +975,7 @@ def main():
     no_drop = bool(args.no_drop)
     prepend_file = args.prepend_file
     ddl = bool(getattr(args, 'ddl', False))
+    version_threshold = int(getattr(args, 'version_threshold', 80000))
 
     if not out_path:
         print(
@@ -987,7 +1040,7 @@ def main():
     process_dump_stream(
         in_path,
         out_path,
-        version_threshold=args.version_threshold, # unwrap compatibility comments lower than specified version. (E.g 80000 = MySQL 8.0.)
+        version_threshold=version_threshold, # unwrap compatibility comments lower than specified version. (E.g 80000 = MySQL 8.0.)
         table_meta=table_meta,
         default_schema=default_schema,
         db_name=db_name,
