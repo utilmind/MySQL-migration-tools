@@ -746,7 +746,7 @@ def process_dump_stream(
 
                         if inner.rstrip().endswith(";"):
                             # Inner already ends with a semicolon; just drop one from the tail.
-                            tail = tail[1:]
+                            tail = tail[1:] # Drop one ';' from tail to avoid ';;'
                             # Normalize possible blank line after consuming the semicolon.
                             # mysqldump may output "*/;\n\nSET ..." (semicolon terminator plus an empty line).
                             # After consuming ';', `tail` begins with a blank line, which can toggle across runs.
