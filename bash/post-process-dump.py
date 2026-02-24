@@ -745,24 +745,28 @@ def process_dump_stream(
                     # In deterministic DDL mode, we "re-attach" exactly one leading semicolon from
                     # `tail` back to the unwrapped inner statement (while preserving whitespace).
                     consumed_semicolon = False
+                    written_inner = inner
 
                     if ddl and tail.startswith(";"):
                         # Move exactly one leading ';' from tail to the inner statement.
                         if inner.rstrip().endswith(";"):
                             # Inner already ends with ';' -> just consume one leading ';' from tail to avoid ';;'.
                             write_out(inner)
+                            written_inner = inner
                         else:
+                            written_inner = attach_leading_semicolon(inner)
                             # Attach exactly one ';' to inner (preserving trailing whitespace/newlines).
-                            write_out(attach_leading_semicolon(inner))
+                            write_out(written_inner)
                         tail = tail[1:]  # Consume exactly one ';' from tail in both sub-cases above.
                         consumed_semicolon = True
                     else:
                         write_out(inner)
+                        written_inner = inner
 
                     # Normalize possible blank line after consuming the semicolon.
                     # mysqldump may output "*/;\n\nSET ..." (semicolon terminator plus an empty line).
                     # After consuming ';', `tail` can begin with a blank line that toggles across runs.
-                    if consumed_semicolon and inner.endswith("\n") and (tail.startswith("\n\n") or tail.startswith("\r\n\r\n")):
+                    if consumed_semicolon and written_inner.endswith("\n") and (tail.startswith("\n\n") or tail.startswith("\r\n\r\n")):
                         tail = tail[1:] if tail.startswith("\n\n") else tail[len("\r\n"):]
                 else:
                     # Keep the whole comment block as-is
