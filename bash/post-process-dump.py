@@ -716,11 +716,54 @@ def process_dump_stream(
 
                 # Decide whether to unwrap or keep the comment
                 if version < version_threshold:
-                    # Unwrap: emit only the inner content
-                    write_out(inner)
-                else:
-                    # Keep the whole comment block as-is
-                    write_out(comment[:end_pos + 2])
+                    # Unwrap: emit only the inner content.
+                    #
+                    # Important: mysqldump often places the terminating semicolon *after* the
+                    # versioned comment, e.g. "/*!50001 VIEW ... */;". When we unwrap, that
+                    # semicolon becomes a standalone line in the output, which creates noisy diffs.
+                    # To keep output stable, we "re-attach" a single leading semicolon from the
+                    # tail back to the unwrapped inner statement.
+                    if tail.startswith(";"):
+                        # mysqldump often puts the terminator semicolon after the closing '*/' of
+                        # a versioned comment, e.g. "/*!50001 CREATE VIEW ... */;".
+                        #
+                        # When we unwrap the comment, that semicolon becomes part of `tail`.
+                        # A naive `inner + ";"` can accidentally create a standalone ';' line when
+                        # `inner` ends with a newline. To keep output deterministic and idempotent,
+                        # we attach exactly one leading ';' to the end of the last non-whitespace
+                        # character in `inner`, preserving trailing whitespace/newlines.
+                        def _attach_leading_semicolon(inner_sql: str) -> str:
+                            # Preserve trailing whitespace/newlines exactly as-is.
+                            m_ws = re.search(r"(\s*)\Z", inner_sql)
+                            trailing_ws = m_ws.group(1) if m_ws else ""
+                            body = inner_sql[: len(inner_sql) - len(trailing_ws)] if trailing_ws else inner_sql
+
+                            # If the body already ends with ';', return unchanged.
+                            if body.rstrip().endswith(";"):
+                                return inner_sql
+
+                            return body + ";" + trailing_ws
+
+                        if inner.rstrip().endswith(";"):
+                            # Inner already ends with a semicolon; just drop one from the tail.
+                            tail = tail[1:]
+                            # Normalize possible blank line after consuming the semicolon.
+                            # mysqldump may output "*/;\n\nSET ..." (semicolon terminator plus an empty line).
+                            # After consuming ';', `tail` begins with a blank line, which can toggle across runs.
+                            # If we have 2+ leading newlines, drop exactly one.
+                            if inner.endswith("\n") and (tail.startswith("\n\n") or tail.startswith("\r\n\r\n")):
+                                tail = tail[1:] if tail.startswith("\n\n") else tail[len("\r\n"):]
+                            write_out(inner)
+                        else:
+                            # Move one semicolon from tail into the inner statement in a safe way.
+                            write_out(_attach_leading_semicolon(inner))
+                            tail = tail[1:]
+                            # Normalize possible blank line after consuming the semicolon (see above).
+                            if inner.endswith("\n") and (tail.startswith("\n\n") or tail.startswith("\r\n\r\n")):
+                                tail = tail[1:] if tail.startswith("\n\n") else tail[len("\r\n"):]
+                    else:
+                        # Keep the whole comment block as-is
+                        write_out(comment[:end_pos + 2])
 
                 # Now we continue processing the tail of the comment
                 line = tail
