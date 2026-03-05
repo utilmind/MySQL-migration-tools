@@ -337,6 +337,10 @@ def sanitize_ddl_for_reproducibility(text):
     # Ensure delimiter starts on a new line after versioned comment closure.
     text = re.sub(r"\*/\s*DELIMITER\s*;;", "*/\nDELIMITER ;;", text)
 
+    # Remove blank lines right before DELIMITER directives to keep dumps stable.
+    # mysqldump may randomly emit an extra empty line before DELIMITER ;; in routines/events.
+    text = re.sub(r"(?m)\n{2,}(?=DELIMITER\b)", "\n", text)
+
     # Strip trailing whitespace on each line (great for stable Git diffs).
     text = re.sub(r"[ \t]+\n", "\n", text)
 
