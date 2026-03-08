@@ -1068,7 +1068,7 @@ def main():
             if sanitized_text != out_text:
                 p.write_text(sanitized_text, "utf-8")
         except Exception as e:
-            sys.stderr.write(f"\n[WARN] Final DDL sanitization pass failed: {e}\n")
+            sys.stderr.write("\n[WARN] Final DDL sanitization pass failed: {0}\n".format(e))
 
 
 if __name__ == "__main__":
