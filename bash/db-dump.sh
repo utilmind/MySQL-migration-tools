@@ -178,7 +178,7 @@ print_help() {
     scriptName=$(basename "$0")
     cat << EOF
 Usage:
-    $scriptName [--no-data or --ddl] [--ddl-push] [--skip-optimize] dump-name.sql [configuration-name] ["table1 table2 ..."]
+    $scriptName [--no-data or --ddl] [--ddl-push] [--skip-optimize] [--no-archive] [--strict] dump-name.sql [configuration-name] ["table1 table2 ..."]
 
 Options:
     --no-data
@@ -200,6 +200,14 @@ Options:
 
     --skip-optimize
         Do not run optimize-tables.sh before dumping (skip MyISAM OPTIMIZE / InnoDB ANALYZE).
+
+    --no-archive
+        Keep the uncompressed SQL file instead of archiving/deleting it.
+        Useful when another script needs to parse or compare the dump.
+
+    --strict
+        Stop on mysqldump errors instead of using --force. Recommended for
+        machine-consumed dumps used to decide whether data can be imported.
 
 Arguments: (POSITIONED)
     dump-name.sql (Required)
@@ -254,6 +262,8 @@ if [ $# -eq 0 ]; then
 fi
 
 run_optimize=1
+no_archive=0         # when 1, keep the plain SQL file (do not compress/delete)
+strict_dump=0         # when 1, suppress --force to fail on dump errors
 structure_only=0   # when 1, dump only schema (no table rows, no DROP statements)
 ddl_mode=0         # when 1, the user explicitly requested --ddl (pretty extension .ddl.sql)
 ddl_push=0         # when 1, do schema-only dump and push it to git
@@ -268,6 +278,14 @@ while [ $# -gt 0 ]; do
             ;;
         --skip-optimize)
             run_optimize=0
+            shift
+            ;;
+        --no-archive)
+            no_archive=1
+            shift
+            ;;
+        --strict)
+            strict_dump=1
             shift
             ;;
         --no-data)
@@ -333,7 +351,19 @@ fi
 
 # ---------------- BASIC PATHS / FILENAMES ----------------
 
-thisScript=$(readlink -f "$0") # alternative is $(realpath "$0"), if "realpath" is installed
+# Resolve paths on both GNU/Linux and stock macOS. Preserve the historical
+# ability to create dumps without Python if the post-processor is unavailable.
+portable_realpath() {
+    if readlink -f "$1" 2>/dev/null; then
+        return 0
+    fi
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$1"
+    else
+        (cd "$(dirname "$1")" && printf '%s/%s\n' "$(pwd -P)" "$(basename "$1")")
+    fi
+}
+thisScript=$(portable_realpath "$0")
 scriptDir=$(dirname "$thisScript")
 
 # Temporary directory for helper files (table lists, metadata, etc.)
@@ -441,6 +471,16 @@ if [ "$ddl_mode" -eq 1 ]; then
     ddlSanitizePyOption="--ddl";
 fi
 
+
+# For strict dumps used by automation, remove the historical --force option
+# (which otherwise allows partial dumps after a server-side SQL error).
+if [ "$strict_dump" -eq 1 ]; then
+    strict_opts=()
+    for dump_opt in "${COMMON_OPTS[@]}"; do
+        [ "$dump_opt" = '--force' ] || strict_opts+=("$dump_opt")
+    done
+    COMMON_OPTS=("${strict_opts[@]}")
+fi
 
 # --------- OPTIONAL TABLE OPTIMIZATION / ANALYZE (if not skipped with --skip-optimize) ---------
 
@@ -842,7 +882,7 @@ if [ "$ddl_push" -eq 1 ]; then
     }
 
     # Need the uncompressed SQL file to commit. So we will also skip archiving below.
-    srcAbs="$(readlink -f "$targetFilename")"
+    srcAbs="$(portable_realpath "$targetFilename")"
     log_info "--ddl-push is enabled. Preparing to commit/push '$srcAbs' ..."
     git_push_ddl_dump "$srcAbs"
 fi
@@ -850,11 +890,11 @@ fi
 
 # -------------- ARCHIVE MAINTENANCE ---------------
 
-# If --ddl-push was used, keep the SQL file as-is (do not archive/delete it),
-# because the git step needs the plain *.ddl.sql file.
-if [ "$ddl_push" -eq 1 ]; then
+# Keep the plain SQL file when --ddl-push or --no-archive was requested.
+# Without either option, preserve the historical archive/delete behavior.
+if [ "$ddl_push" -eq 1 ] || [ "$no_archive" -eq 1 ]; then
     archiveFile="$targetFilename"
-    log_info "Skipping archiving because --ddl-push is enabled."
+    log_info "Skipping archiving (--ddl-push or --no-archive enabled)."
 else
     # Check if RAR available
     if command -v rar >/dev/null 2>&1; then
@@ -900,4 +940,4 @@ else
     fi
 fi
 
-log_ok "Dump finished and archived as '$archiveFile'."
+log_ok "Dump finished: '$archiveFile'."
