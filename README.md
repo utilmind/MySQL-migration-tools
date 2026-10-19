@@ -328,6 +328,34 @@ Specific tables and `--no-data` can be combined:
 ./db-dump.sh --no-data /backups/schema-@.sql production users orders
 ```
 
+### **Keep the uncompressed SQL file (`--no-archive`)**
+
+By default, `db-dump.sh` archives the completed dump as `.rar` (when `rar` is available) or `.gz` (otherwise, when `gzip` is available), and removes the original plain SQL file after successful compression.
+
+Use `--no-archive` to **skip compression and keep the original `.sql` or `.ddl.sql` file** at the requested path. This is useful when another tool needs to read or compare the dump directly, for example `compare-ddl.py`.
+
+```bash
+./db-dump.sh --ddl --no-archive /backups/mydb.ddl.sql production
+```
+
+- Works with full database dumps and structure-only dumps (`--no-data` / `--ddl`).
+- When `--no-archive` is used, archive rotation is also skipped.
+- `--ddl-push` already keeps its `.ddl.sql` file uncompressed, so adding `--no-archive` is optional in that mode.
+
+### **Stop on dump errors (`--strict`)**
+
+By default, the script passes `--force` to `mysqldump`, allowing it to continue after certain SQL errors. This can be useful for manual backups, but a partial or incomplete dump must **not** be used as a reliable input for automated schema comparison or data synchronization.
+
+Use `--strict` to **omit `mysqldump --force`**. If `mysqldump` fails, `db-dump.sh` exits with an error instead of continuing with post-processing or archiving. A partially written SQL file may still remain on disk; always check the command's exit status before using the result.
+
+For automated DDL comparisons, combine `--strict` with `--no-archive` and `--skip-optimize`:
+
+```bash
+./db-dump.sh --ddl --strict --no-archive --skip-optimize /backups/mydb.ddl.sql production
+```
+
+`--skip-optimize` is especially important when using a read-only production account: it avoids the optional `OPTIMIZE`/`ANALYZE` operations before the dump.
+
 ### ✅ Schema DDL dump with auto-push to Git (`--ddl-push`)
 
 If you want a **diffable schema snapshot** in Git, `db-dump.sh` can generate a **structure-only** dump and then **commit & push**
