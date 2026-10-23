@@ -50,7 +50,7 @@ set -euo pipefail
 # Detect or declare `mysqldump` binary
 MYSQLDUMP_BIN="${MYSQLDUMP_BIN:-mysqldump}"
 if ! command -v "$MYSQLDUMP_BIN" >/dev/null 2>&1; then
-    log_error "mysqldump not found in PATH."
+    printf "[ERROR] mysqldump is not installed or not in PATH.\n"
     exit 1
 fi
 
